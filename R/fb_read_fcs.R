@@ -63,7 +63,14 @@ fb_read_fcs <- function(
   for (i in match(file_nos, fb@pheno$file_no)) {
     # read file
     if (verbose) message(sprintf("reading FCS %3d/%d", i, length(file_nos)))
-    ff = do.call("read.FCS", c(fb@pheno$file_name[i], fb@options$read_fcs))
+    file_path <- fb@pheno$file_name[i]
+    if (!file.exists(file_path)) {
+      file_path <- file.path(fb@input$path, fb@pheno$file_name[i])
+      if (!file.exists(file_path)) {
+        stop("file not found: ", fb@pheno$file_name[i])
+      }
+    }
+    ff <- do.call("read.FCS", c(file_path, fb@options$read_fcs))
     chn_idx <- get_channel_idx(fcs_colnames, ff)
     if (any(is.na(chn_idx))) {
       warning(sprintf(
