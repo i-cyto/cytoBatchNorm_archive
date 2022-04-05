@@ -183,7 +183,11 @@ ui <- dashboardPage(
                   selectInput(
                     "tune_batch_method",
                     "Set the method to adjust batch effect",
-                    choices = c("percentile_hi", "percentile_lohi")
+                    choices = c("percentile_hi",
+                                "percentile_lohi",
+                                "percentile_lohi_pos",
+                                "none",
+                                "quantiles")
                   ),
                   textInput(
                     "tune_batch_params",
@@ -342,13 +346,39 @@ ui <- dashboardPage(
           title = "Process", width = 12,
           sidebarPanel(
             width = 4,
+            tags$fieldset(
+              tags$legend("QC: preview the normalization"),
+            ),
+            tags$div(
+              class="form-group shiny-input-container",
+              tags$label("To preview all channels across all batches for reference files, click below"), tags$br(),
+              actionButton(
+                "proc_preview_button",
+                "Preview"
+              )
+            ),
+            tags$fieldset(
+              tags$legend("Process"),
+            ),
             tags$div(
               class="form-group shiny-input-container",
               tags$label("Once you reviewed all channels, click below"), tags$br(),
               actionButton(
                 "proc_apply_button",
                 "Apply"
-              ))
+              )
+            ),
+            tags$fieldset(
+              tags$legend("QC: review the normalization"),
+            ),
+            tags$div(
+              class="form-group shiny-input-container",
+              tags$label("To review all channels across all batches for all files, click below"), tags$br(),
+              actionButton(
+                "proc_review_button",
+                "Review"
+              )
+            )
           ),
 
           mainPanel(

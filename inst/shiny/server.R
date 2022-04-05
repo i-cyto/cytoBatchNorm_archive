@@ -181,6 +181,18 @@ server <- function(input, output, session) {
     # Erase any ref and transformation
     mem$my_fb_ref <- NULL
     showNotification("Pheno and panel files reloaded from disk", type = "message")
+    # Check batch information in pheno is correct
+    errors <- fb_check_pheno(my_fb)
+    # output errors
+    msg <- paste0(tags$br(), "===== ", date(), tags$br(), tags$br())
+    if (length(errors)) {
+      msg <- paste0(msg, errors, collapse = "<br/>")
+      showNotification("Pheno file is incorrect. Check Log.", type = "error")
+    } else {
+      msg <- paste0(msg, "Pheno is correct.")
+      showNotification("Pheno file is correct.", type = "message")
+    }
+    shinyjs::html(id = "setup_log", html = msg, add = TRUE)
   })
 
   output$setup_set <- renderText({
@@ -206,49 +218,23 @@ server <- function(input, output, session) {
     }
   )
 
-  # Check batch information in pheno is correct
-  observeEvent(input$setup_reload_button, {
-    my_fb <- mem$my_fb
-    req(my_fb)
-    pheno <- my_fb@pheno
-
-    errors <- list()
-    # identify FCS with no batch_id
-    ko <- is.na(pheno$batch_id) | trimws(pheno$batch_id) == ""
-    if (any(ko)) errors <- c(errors, sprintf(
-      "FCS do not have batch_id: %s",
-      paste0(pheno$sample_id[ko], collapse = ", ")))
-    # extract anchor per batch
-    tbl <- table(pheno$sample_is_ref, pheno$batch_id)
-    # identify batch with 0 anchor
-    ko <- tbl["Y",] == 0
-    if (any(ko)) errors <- c(errors, sprintf(
-      "Batches do not have an anchor: %s",
-      paste0(colnames(tbl)[ko], collapse = ", ")))
-    # identify batch with >1 anchors
-    ko <- tbl["Y",] > 1
-    if (any(ko)) errors <- c(errors, sprintf(
-      "Batches have more than 1 anchor: %s",
-      paste0(colnames(tbl)[ko], collapse = ", ")))
-    # extract reference
-    tbl <- table(pheno$batch_is_ref, pheno$batch_id)
-    # reference is an anchor
-    ko <- sum(tbl["Y",]) == 0
-    if (any(ko)) errors <- c(errors, "No batch is reference")
-    # reference is unique
-    ko <- sum(tbl["Y",]) > 1
-    if (any(ko)) errors <- c(errors, "More than 1 batch is reference")
-    # output errors
-    msg <- paste0(tags$br(), "===== ", date(), tags$br(), tags$br())
-    if (length(errors)) {
-      msg <- paste0(msg, errors, collapse = "<br/>")
-      showNotification("Pheno file is incorrect. Check Log.", type = "error")
-    } else {
-      msg <- paste0(msg, "Pheno is correct.")
-      showNotification("Pheno file is correct.", type = "message")
-    }
-    shinyjs::html(id = "setup_log", html = msg, add = TRUE)
-  })
+  # # Check batch information in pheno is correct
+  # observeEvent(input$setup_reload_button, {
+  #   my_fb <- mem$my_fb
+  #   req(my_fb)
+  #
+  #   errors <- fb_check_pheno(my_fb)
+  #   # output errors
+  #   msg <- paste0(tags$br(), "===== ", date(), tags$br(), tags$br())
+  #   if (length(errors)) {
+  #     msg <- paste0(msg, errors, collapse = "<br/>")
+  #     showNotification("Pheno file is incorrect. Check Log.", type = "error")
+  #   } else {
+  #     msg <- paste0(msg, "Pheno is correct.")
+  #     showNotification("Pheno file is correct.", type = "message")
+  #   }
+  #   shinyjs::html(id = "setup_log", html = msg, add = TRUE)
+  # })
 
 
   # ========== TUNE
@@ -276,16 +262,16 @@ server <- function(input, output, session) {
 
     # load data to assess density plot
     showNotification("Sampling started", type = "message")
-    my_fb_ref <- fb_read_fcs(
-      my_fb_ref, sampling = "ceil",
-      n_cells = tune_load_ncells)
+    my_fb_ref <- fb_load_cells(
+      my_fb_ref, n_cells = tune_load_ncells
+    )
     showNotification("Sampling finished", type = "message")
 
     # set or update my_fb_ref
     if (is.null(mem$my_fb_ref)) {
       mem$my_fb_ref <- my_fb_ref
     } else {
-      # Copy transformations
+      # Copy expressions
       mem$my_fb_ref@exprs <- my_fb_ref@exprs
     }
 
@@ -459,13 +445,13 @@ server <- function(input, output, session) {
       channels = tune_channel
     )
     # fit model to correct batch effect and store model
-    my_fb_ref <- fb_model_batch(
+    my_fb_ref_mod <- fb_model_batch(
       my_fb_ref,
       channels = tune_channel
     )
-    mem$my_fb_ref <- my_fb_ref
+    mem$my_fb_ref <- my_fb_ref_mod
     # return updated FB
-    my_fb_ref
+    my_fb_ref_mod
   })
 
   output$tune_main_plot <- renderPlot({
@@ -477,12 +463,12 @@ server <- function(input, output, session) {
     req(my_fb_ref)
 
     # correct batch effect and plot
-    my_fb_ref <- fb_correct_batch(
+    my_fb_ref_adj <- fb_correct_batch(
       my_fb_ref,
       channels = channel
     )
     fb_plot_ridgelines(
-      my_fb_ref,
+      my_fb_ref_adj,
       channel,
       group_by = "batch_id",
       cof = 8,
@@ -743,10 +729,45 @@ server <- function(input, output, session) {
   })
 
 
+  # ========== PREVIEW NORMALISATION
+
+  observeEvent(input$proc_preview_button, {
+    validate(
+      need(input$create_proj_name, 'Check project name!'),
+      need(input$create_proj_dir, 'Check project directory!')
+    )
+    if (debugging()) browser()
+    my_fb_ref <- mem$my_fb_ref
+    req(my_fb_ref)
+
+    # plot raw, ie before
+    showNotification("Preview RAW started")
+    pdf(fb_file_name(my_fb_ref, "-refs_raw.pdf"), width = 15, height = 6)
+    fb_plot_ridgelines(my_fb_ref, title = "Raw")
+    dev.off()
+    showNotification("Preview RAW finished")
+
+    # apply models
+    showNotification("Normalisation started")
+    my_fb_ref_mod <- fb_model_batch(
+      my_fb_ref
+    )
+    my_fb_ref_adj <- fb_correct_batch(
+      my_fb_ref_mod
+    )
+    showNotification("Normalisation finished")
+
+    # plot normed, ie after
+    showNotification("Preview NORMD started")
+    pdf(fb_file_name(my_fb_ref, "-refs_normed.pdf"), width = 15, height = 6)
+    fb_plot_ridgelines(my_fb_ref_adj, group_by = "batch_id", title = "Normd")
+    dev.off()
+    showNotification("Preview NORMD finished")
+  })
+
+
   # ========== PROCESS
 
-  # TODO: store PDF before/after histograms, normalisation functions
-  # TODO: define the output directories
   observeEvent(input$proc_apply_button, {
     validate(
       need(input$create_proj_name, 'Check project name!'),
@@ -759,11 +780,15 @@ server <- function(input, output, session) {
     my_fb <- mem$my_fb
     req(my_fb)
     # model and copy transformations
+    showNotification("Normalisation started")
     my_fb_ref <- fb_model_batch(my_fb_ref)
     my_fb@procs <- my_fb_ref@procs
+    my_fb@panel <- my_fb_ref@panel
     my_fb <- fb_freeze_file_no(my_fb)
+    # store before processing
+    fb_write(my_fb)
     # apply models
-    showNotification("Normalisation started")
+    showNotification("File processing started")
     withCallingHandlers({
       shinyjs::html("proc_log", "\n")
       message(format(Sys.time(), "%a %b %d %Y %X TZ(%z)"), appendLF = TRUE)
@@ -777,8 +802,59 @@ server <- function(input, output, session) {
       shinyjs::html(id = "proc_log", html = m$message, add = TRUE)
     })
     showNotification("Normalisation finished")
-    # store
-    fb_write(my_fb)
+    # create minimal information to build a flowBunch in fcs
+    fb_export(my_fb)
+  })
+
+
+  # ========== REVIEW NORMALISATION
+
+  observeEvent(input$proc_review_button, {
+    validate(
+      need(input$create_proj_name, 'Check project name!'),
+      need(input$create_proj_dir, 'Check project directory!')
+    )
+    if (debugging()) browser()
+    my_fb <- mem$my_fb
+    req(my_fb)
+
+    # plot raw, ie before
+    showNotification("Review RAW started")
+    my_fb_raw <- fb_reload(
+      my_fb
+    )
+    # load data to assess density plot
+    my_fb_raw <- fb_load_cells(
+      my_fb_raw, n_cells = 9000
+    )
+    # plot raw, ie before normalization
+    pdf(fb_file_name(my_fb_raw, "-raw.pdf"), width = 15, height = 8)
+    fb_plot_ridgelines(my_fb_raw, title = "Raw")
+    dev.off()
+    showNotification("Review RAW finished")
+
+    # check process succeeded
+    fcs_dir <- file.path(fb_file_name(my_fb), "fcs")
+    if (!testDirectoryExists(fcs_dir)) {
+      showNotification("Normalized files not found")
+      return()
+    }
+
+    # plot normed, ie after
+    showNotification("Review NORMD started")
+    my_fb_adj <- fb_open_(
+      project_name = "fcs",
+      project_dir = fb_file_name(my_fb)
+    )
+    # load data to assess density plot
+    my_fb_adj <- fb_load_cells(
+      my_fb_adj, n_cells = 9000
+    )
+    # plot after, ie after, in the same project
+    pdf(fb_file_name(my_fb, "-normd.pdf"), width = 15, height = 8)
+    fb_plot_ridgelines(my_fb_adj, title = "Normd")
+    dev.off()
+    showNotification("Review NORMD finished")
   })
 
 
