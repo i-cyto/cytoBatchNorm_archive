@@ -102,13 +102,15 @@ dt_plot_ridgelines <- function(
   for (chn in channels) {
     dta_chn = dta[, chn]
     # Density on the full range
-    dd <- density(dta_chn[dta_chn > dta_low], n = dens_n, bw = dens_bw)
+    if (any(is.na(dta_chn[dta_chn > dta_low]))) browser()
+    dd <- density(dta_chn[dta_chn > dta_low], n = dens_n, bw = dens_bw, na.rm = TRUE)
     dd_cof <- max(dd$y)/cof  # asinh cofactor for scaling the density height
     # qq = quantile(dta_chn[dta_chn > dta_low], probs = c(0.5, 0.99))
     # dd_cof <- max(dd$y) / (qq[2] / qq[1]) / cof
     from_to <- range(c(-1, dd$x))
     dd_bw <- dd$bw
     dd_n <- dd$y > max(dd$y)/1000
+    dd_n <- dd$y > 0
     from_to <- range(dd$x[dd_n])
     # Density per batch
     ggxx = NULL  # density curves
