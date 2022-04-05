@@ -5,7 +5,7 @@
 #' @param fb flowBunch
 #' @param s_format string, the format used in a sprintf. It eases to build standardized file names.
 #'
-#' @importFrom checkmate assertClass assertString
+#' @importFrom checkmate assertClass assertString testNull
 #' @export
 
 fb_file_name <- function(
@@ -17,6 +17,8 @@ fb_file_name <- function(
   proj_name <- fb@output$name
   proj_path <- fb@output$path
   assertString(proj_name)
+  if (testNull(proj_path))
+    return(NULL)
   assert(dir.exists(proj_path))
   if (is.null(s_format)) {
     file.path(proj_path, proj_name)
@@ -33,19 +35,26 @@ fb_file_name <- function(
 #' @description .
 #'
 #' @param fb flowBunch
+#' @param write_exprs logical, write expressions; default to FALSE.
 #'
-#' @importFrom checkmate assertClass
+#' @importFrom checkmate assertClass testNull assertLogical
 #' @export
 
 fb_write <- function(
-  fb
+  fb,
+  write_exprs = FALSE
 ) {
   assertClass(fb, "flowBunch")
+  assertLogical(write_exprs)
   proj_dir <- fb_file_name(fb)
+  if (testNull(proj_dir))
+    return(NULL)
   if (!dir.exists(proj_dir))
     dir.create(proj_dir)
   fb_write_pheno(fb)
   fb_write_panel(fb)
+  if (!write_exprs)
+    fb@exprs <- NULL
   save(fb, file = fb_file_name(fb, "%s-fcsBunch.RData"))
 }
 
@@ -63,7 +72,7 @@ fb_reload <- function(
   fb
 ) {
   assertClass(fb, "flowBunch")
-  fb <- fb_open_pheno(fb)
-  fb <- fb_open_panel(fb)
+  fb <- fb_read_pheno(fb)
+  fb <- fb_read_panel(fb)
   fb
 }
