@@ -1,4 +1,4 @@
-#' @title fb_open_panel
+#' @title fb_read_panel
 #'
 #' @description .
 #'
@@ -9,7 +9,7 @@
 #' @importFrom checkmate assertClass assertString assert testClass
 #' @export
 
-fb_open_panel <- function(
+fb_read_panel <- function(
   fb,
   file
 ) {
@@ -17,14 +17,14 @@ fb_open_panel <- function(
   if (missing(file))
     file <- fb_file_name(fb, "%s-panel.xlsx")
   assertString(file)
-  assert(file.exists(file))
+  assertFileExists(file)
   if (grepl("xlsx$", file)) {
     panel <- readxl::read_excel(file)
     panel <- as.data.frame(panel)
   } else
     stop("Unrecognized file format for panel")
   if (testClass(panel, "data.frame")) {
-    # TODO: do some basic checks
+    # TODO: check that it is a pheno file
   }
   fb@panel <- panel
   fb
@@ -38,6 +38,8 @@ fb_open_panel <- function(
 #'
 #' @param fb flowBunch
 #'
+#' @importFrom writexl write_xlsx
+#' @importFrom checkmate assertClass assertPathForOutput
 #' @export
 
 fb_write_panel <- function(
@@ -45,7 +47,7 @@ fb_write_panel <- function(
 ) {
   assertClass(fb, "flowBunch")
   file <- fb_file_name(fb, "%s-panel.xlsx")
-  assert(dir.exists(dirname(file)))
+  assertPathForOutput(file, overwrite = TRUE)
   if (grepl("xlsx$", file)) {
     if (file.exists(file))
       file.rename(file, timetag(file))
