@@ -119,7 +119,9 @@ setClass(
     exprs = NULL,
     pheno = NULL,
     panel = NULL,
-    histo = list(paste0(Sys.time(), " Initialized")),
+    histo = list(
+      paste0(Sys.time(), " Initialized")
+    ),
     options = list(
       read_fcs = list(
         transformation = FALSE,
@@ -132,7 +134,8 @@ setClass(
       do_transform = FALSE,
       transformed = FALSE,
       transforms = NULL,
-      revtransforms = NULL),
+      revtransforms = NULL
+    ),
     procs = NULL,
     input = list(
       files = NULL,
