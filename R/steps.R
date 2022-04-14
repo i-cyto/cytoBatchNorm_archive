@@ -14,21 +14,25 @@
 #'
 #' @return a flowBunch object.
 #'
+#' @importFrom checkmate assertDirectoryExists
 #' @export
 
 fb_initiate <- function(
   project_name,
-  project_dir,
+  project_dir = NULL,
   fcs_dir,
   cytometer
 ) {
+  assertDirectoryExists(fcs_dir)
+  if (!is.null(project_dir))
+    assertDirectoryExists(project_dir)
   # Empty init
   my_fb <- flowBunch()
   # Set output params
   my_fb@output$name <- project_name
   my_fb@output$path <- project_dir
   # Scan FCS files
-  my_fb <- fb_init_from_files(my_fb, path = fcs_dir, pattern = "\\.[Ff][Cc][Ss]$", verbose = 1)
+  my_fb <- fb_init_from_files(my_fb, path = fcs_dir, pattern = "\\.[Ff][Cc][Ss]$", verbose = 1, with_date_time = TRUE)
   # info
   fb_print(my_fb)
   # set direct and reverse transformations
@@ -127,6 +131,36 @@ fb_open <- function(
 }
 
 
+#' @title fb_open_from_disk
+#'
+#' @description Create a flowBunch from one previously saved to disk. This
+#'   function only reads the RData file, not the panel and pheno files.
+#'
+#' @param project_name string, name of the project in which the flowBunch is.
+#' @param project_dir string, the directory in which the project resides.
+#'
+#' @return a flowBunch object.
+#'
+#' @export
+
+fb_open_ <- function(
+  project_name,
+  project_dir
+) {
+  # Empty init
+  my_fb <- flowBunch()
+  # Set output params
+  my_fb@output$name <- project_name
+  my_fb@output$path <- project_dir
+  #
+  my_fb@input$path <- fb_file_name(my_fb)
+  my_fb <- fb_read_panel(my_fb)
+  my_fb <- update_transf_from_panel(my_fb)
+  my_fb <- fb_read_pheno(my_fb)
+  my_fb
+}
+
+
 #' @title fb_reload_from_disk
 #'
 #' @description Reload the panel and pheno files of the flowBunch.
@@ -141,9 +175,9 @@ fb_open <- function(
 fb_reload_from_disk <- function(
   my_fb
 ) {
-  my_fb <- fb_open_panel(my_fb)
+  my_fb <- fb_read_panel(my_fb)
   my_fb <- update_transf_from_panel(my_fb)
-  my_fb <- fb_open_pheno(my_fb)
+  my_fb <- fb_read_pheno(my_fb)
   my_fb
 }
 
@@ -294,6 +328,30 @@ fb_split_batch_params <- function(
 #' @param channels strings, name of channels to display.
 #' @param verbose integer, verbosity level.
 #'
+#' @details The model defines a function for each channel of each batch that
+#'   transforms the intensity so its percentiles are aligned to the ones of the
+#'   reference batch. The model retrieves the method and its parameters for each
+#'   channel.
+#'
+#'   Current implemented methods are:
+#'
+#'   - "none": f(x) = x
+#'
+#'   - "percentile_hi": f(x) = x
+#'
+#'   - "percentile_hi": f(x) = (x)/(batHi)*(refHi)
+#'
+#'   - "percentile_lohi": f(x) = (x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo
+#'
+#'   - "percentile_lohi_pos": f(x) =
+#'   (x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, and if f(x) < 0 then f(x) = 0
+#'
+#'   - "quantiles": f(x) = spline_interpolation(x) that each quantile of the
+#'   current batch into the corresponding quantiles of the reference batch. By
+#'   default quantiles are c(0.01, .2, .4, .6, .8, .9, .99). If a single
+#'   positive integer is set, than quantiles will cut the 0..1 percentiles. If a
+#'   set of quantiles is defined, they will be used  for the spline.
+#'
 #' @importFrom stats splinefun
 #' @export
 
@@ -324,6 +382,9 @@ fb_model_batch <- function(
     channels <- fb@panel$fcs_colname[channels]
   }
 
+  options_keep_source <- options("keep.source")
+  options(keep.source=FALSE)
+
   models <- list()
   for (chn in channels) {
     models[[chn]] <- list()
@@ -345,25 +406,36 @@ fb_model_batch <- function(
 
     # modelize
     if (bnp[["method"]] == "none") {
+
       params <- as.character(unique(all_exprs_fid))
       funs <- sapply(params, function(y) {
         function(x) x
       })
       models[[chn]] <- funs
+
     } else if (bnp[["method"]] == "percentile_hi") {
+
       qlo <- 0
       qhi <- max(as.numeric(bnp[["params"]]))
       params <- tapply(all_exprs_chn, all_exprs_fid,
                        quantile, probs = c(qlo, qhi))
       funs <- sapply(names(params), function(y) {
-        refQ <- params[[ref_bid]][2]
-        batQ <- params[[y]][2]
-        function(x) (x/batQ*refQ)
+        refHi <- params[[ref_bid]][2]
+        batHi <- params[[y]][2]
+        if (batHi == 0) {
+          warning("Infinite scaling for batch ", y, ", channel ", chn,
+                  ". No scaling.", call. = FALSE)
+          function(x) x
+        } else {
+          function(x) (x/batHi*refHi)
+        }
       })
       models[[chn]] <- funs
+
     } else if (bnp[["method"]] == "quantiles") {
+
       bnp_params <- as.numeric(bnp[["params"]])
-      if (length(bnp_params) == 0) {  # default quantiles
+      if (length(bnp_params) == 0 || is.na(bnp_params)) {  # default quantiles
         quantileValues <- c(0.01, .2, .4, .6, .8, .9, .99)
       } else if (length(bnp_params) == 1 && bnp_params > 1) {
         nQ <- min(bnp_params, 101)
@@ -371,23 +443,25 @@ fb_model_batch <- function(
       } else {
         quantileValues <- bnp_params
       }
-      # params <- tapply(all_exprs_chn, all_exprs_fid,
-      #                  quantile, probs = quantileValues)
       params <- tapply(all_exprs_chn, all_exprs_fid,
-                       function(x) {
-                         x <- x[x>0]
-                         quantile(x, probs = quantileValues)
-                       })
+                       quantile, probs = quantileValues)
+      # params <- tapply(all_exprs_chn, all_exprs_fid,
+      #                  function(x) {
+      #                    x <- x[x>0]
+      #                    quantile(x, probs = quantileValues)
+      #                  })
       funs <- sapply(names(params), function(y) {
         refQ <- params[[ref_bid]]
         batQ <- params[[y]]
-        # function(x) pmax((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, 0)
         suppressWarnings(
           spl <- stats::splinefun(batQ, refQ, method = "monoH.FC"))
         spl
       })
       models[[chn]] <- funs
-    } else if (bnp[["method"]] == "percentile_lohi") {
+
+    } else if (bnp[["method"]] %in%
+               c("percentile_lohi", "percentile_lohi_pos")) {
+
       bnp_params <- as.numeric(bnp[["params"]])
       if (length(bnp_params) == 1) qlo <- 0.40 else
         qlo <- max(min(bnp_params), 0)
@@ -399,15 +473,24 @@ fb_model_batch <- function(
         batLo <- params[[y]][1]
         refHi <- params[[ref_bid]][2]
         batHi <- params[[y]][2]
-        function(x) pmax((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, 0)
-        # function(x) ((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo)
-        # function(x) (x/batHi*refHi)
+        if (batHi == batLo) {
+          warning("Infinite scaling for batch ", y, ", channel ", chn,
+                  ". No scaling.", call. = FALSE)
+          function(x) x
+        } else if (bnp[["method"]] == "percentile_lohi") {
+          function(x) (x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo
+        } else {
+          function(x) pmax((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, 0)
+        }
       })
       models[[chn]] <- funs
+
     } else {
       stop("Unknown batchnorm method ", bnp[["method"]], " for channel ", chn)
     }
+
   }
+  options(options_keep_source)
   if (verbose) message("\nDone")
   for (chn in names(models)) {
     fb@procs$batchnorm_funs[[chn]] <- models[[chn]]
@@ -532,6 +615,8 @@ fb_correct_batch_fcs <- function(
 
   outdir <- file.path(fb@output$path, fb@output$name, "fcs")
   if (!dir.exists(outdir)) dir.create(outdir)
+  if (verbose)
+    message("output directory is ", outdir)
 
   # finally apply batch adjustment
   for (file_no in file_nos) {

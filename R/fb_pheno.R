@@ -26,6 +26,8 @@ fb_read_pheno <- function(
   if (testClass(pheno, "data.frame")) {
     # TODO: check that it is a pheno file
   }
+  # TODO: check same number of lines
+  # TODO: check lines are matching
   fb@pheno <- pheno
   fb
 }
