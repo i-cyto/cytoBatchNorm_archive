@@ -18,7 +18,7 @@ with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("SamGG/cytoBatchNorm")
+devtools::install_github("i-cyto/cytoBatchNorm")
 ```
 
 Just be sure to install
