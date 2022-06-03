@@ -27,8 +27,10 @@ cytoBatchNorm is not available on [CRAN](https://CRAN.R-project.org).
 You can install the latest version from [GitHub](https://github.com/) with:
 
 ``` r
+# the devtools package must be present
+# if not, install devtools with the following command
 # install.packages("devtools")
-devtools::install_github("SamGG/cytoBatchNorm")
+devtools::install_github("i-cyto/cytoBatchNorm")
 ```
 
 Just be sure to install [flowCore](https://www.bioconductor.org/packages/release/bioc/html/flowCore.html) from [Bioconductor](https://www.bioconductor.org) first.

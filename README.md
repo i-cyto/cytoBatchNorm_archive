@@ -18,7 +18,7 @@ with:
 
 ``` r
 # the devtools package must be present
-# if not, install it with the following command
+# if not, install devtools with the following command
 # install.packages("devtools")
 devtools::install_github("i-cyto/cytoBatchNorm")
 ```
