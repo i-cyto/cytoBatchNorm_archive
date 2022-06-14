@@ -9,6 +9,7 @@
 #'   project name in the project_dir.
 #' @param project_dir string, the directory in which the project resides.
 #' @param fcs_dir string, the directory where all FCS files could be found.
+#' @param pattern string, the pattern to identify FCS files.
 #' @param cytometer string, either "mass", "flow" or "spectral". This defines
 #'   the default cofactor for transforming channels.
 #'
@@ -21,7 +22,8 @@ fb_initiate <- function(
   project_name,
   project_dir = NULL,
   fcs_dir,
-  cytometer
+  pattern = "\\.fcs$",
+  cytometer = c("mass", "flow", "spectral")
 ) {
   assertDirectoryExists(fcs_dir)
   if (!is.null(project_dir))
@@ -32,7 +34,8 @@ fb_initiate <- function(
   my_fb@output$name <- project_name
   my_fb@output$path <- project_dir
   # Scan FCS files
-  my_fb <- fb_init_from_files(my_fb, path = fcs_dir, pattern = "\\.[Ff][Cc][Ss]$", verbose = 1, with_date_time = TRUE)
+  my_fb <- fb_init_from_files(
+    my_fb, path = fcs_dir, pattern = pattern, verbose = 1)
   # info
   fb_print(my_fb)
   # set direct and reverse transformations
@@ -276,13 +279,15 @@ fb_plot_ridgelines <- function(
   # TODO: check channels are in the fcs_colname
   # TODO: check channels are in the names of channel_names
 
+  file_no_mapping <- my_fb@pheno[, group_by]
+  names(file_no_mapping) <- my_fb@pheno[, "file_no"]
+
   for (channel in channels)
     dt_plot_ridgelines(
       dta = tmp_exprs,
       channels = channel,
       channel_names = channel_names,
-      #batch_idn = my_fb@pheno$sample_id,
-      batch_idn = my_fb@pheno[, group_by],
+      batch_idn = file_no_mapping,
       batch_lab = group_by,
       cof = cof,
       cut_lower_than = cut_lower_than,
@@ -404,7 +409,7 @@ fb_model_batch <- function(
       all_exprs_chn <- all_exprs_chn[all_exprs_chn > 0]
     }
 
-    # modelize
+    # build the model
     if (bnp[["method"]] == "none") {
 
       params <- as.character(unique(all_exprs_fid))
@@ -620,9 +625,10 @@ fb_correct_batch_fcs <- function(
 
   # finally apply batch adjustment
   for (file_no in file_nos) {
-    batch_id <- fb@pheno$batch_id[file_no]
+    i <- match(file_no, fb@pheno$file_no)
+    batch_id <- fb@pheno$batch_id[i]
     if (verbose)
-      message(sprintf("%d: %s of %s", file_no, fb@pheno$sample_id[file_no], batch_id))
+      message(sprintf("%d: %s of %s", i, fb@pheno$sample_id[i], batch_id))
     # read FCS
     my_fb_single <- fb_read_fcs(fb, ret = "flowFrame",
                                 file_ids = file_no, sampling = "none")
