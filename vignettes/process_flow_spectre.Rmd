@@ -1,0 +1,331 @@
+---
+title: "cytoBatchNorm flow_spectre"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{process_flow_spectre}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(cytoBatchNorm)
+library(knitr)
+```
+
+
+
+## OVERVIEW
+
+This R Markdown file shows the main functions of the package. It also follows the stages an expert should do without a Graphical User Interface. The expert has to initialize the processing in order to describe the input of the processing (see initialization below). The expert has to tune the processing after the first stage. A few optional stages are also present to feature some particular uses; they can be skipped. 
+
+The processing consists in three main stages. Stage 1 extracts information from the FCS files and builds the pheno and panel files needed to tune the processing. Stage 2 identifies the reference files and normalize them, which leads to a model for each channel of each batch. Stage 3 process each FCS file by applying the model corresponding to its batch and its channel. Between the stages 1 and 2, the expert has to modify the pheno and panel files to identify batches and reference files.
+
+The whole process is given as a single part here.
+
+The overall processing relies on FCS files on disk. It loads in memory as minimal data as needed. This is achieved by defining the flowbunch object that consists in 3 parts. The first part is the FCS files. The second part is the pheno file that add metadata to each file such as the condition (control vs treated), the batch identifier. The third part is the panel file that add metadata to each channel/column of the FCS file. This structure is very similar to the one in flowCore, CATALYST, Spectre and other packages. The design of a new object allowed to think freely to a batch normalization solution.
+
+
+
+## DATA
+
+This vignette show the processing of flow cytometry files. NB: **Compensation matrix is currently ignored**.
+
+The current vignette relies on the data available in the [batch normalisation aka alignment workflow of Spectre](https://github.com/ImmuneDynamics/Spectre/tree/master/workflows/Alignment%20workflows). The CSV files have been saved as FCS without any transformation. These FCS files have no compensation matrix. This study investigates West Niles Virus changes in cells. There are two batches, A and B. The samples Mock_01_A and Mock_05_B are considered as an aliquot of a control sample. More information is available in [Spectre article, Ashhurst et al., 2021](https://onlinelibrary.wiley.com/doi/10.1002/cyto.a.24350).
+
+
+
+## INITIALIZATION
+
+The main variables to initialize are below.
+
+```{r}
+# Name of the project
+prj_name = "flow_spectre"
+# Directory in which the project will be stored
+# you should specify a directory in a data directory instead of tempdir()
+prj_dir = gsub('\\', '/', tempdir(), fixed = TRUE)
+# Directory of the FCS files to normalize
+fcs_dir = system.file("extdata/flow_spectre", package = "cytoBatchNorm")
+# Cytometer to set adequate default values
+cytometer = "flow"
+# Amount of cells to compute corrections
+n_cells = 5000
+```
+
+
+## STAGE 1: Load the FCS set and prepare the design
+
+
+### Create FCS set
+
+```{r}
+my_fb <- fb_initiate(
+  prj_name,
+  prj_dir,
+  fcs_dir,
+  cytometer = cytometer
+)
+
+# optional functions to help you debugging if problems occur
+#
+# dir(file.path(prj_dir, prj_name))
+# cat(gsub("/", "\\\\", file.path(prj_dir, prj_name)))
+#
+# fb_is_valid(my_fb)
+#
+# dim(my_fb@exprs)
+#
+# str(my_fb)
+# my_fb@pheno
+# str(my_fb@options)
+# my_fb@panel
+#
+# print(my_fb)
+# fb_print(my_fb, verbose = 1)
+```
+
+### Report before start (optional)
+
+This optional part features the main graphic on which the tuning is based. Here as no batch nor reference files are defined, all the FCS files are shown. This part is typically useful to describe a few tens of FCS files. Adjust the height of the PDF file to match the number of files.
+
+```{r}
+# load data to assess density plot
+my_fb <- fb_load_cells(
+  my_fb, n_cells = n_cells
+)
+# plot raw, ie before normalization
+pdf_file <- fb_file_name(my_fb, "-raw.pdf")
+pdf(pdf_file, width = 15, height = 8)
+fb_plot_ridgelines(my_fb, title = "Raw")
+dev.off()
+message("PDF file is available at ", pdf_file)
+```
+
+
+### Set up batch
+
+Try to guess from patterns in file names a) the batch of each file, b) which file is the reference in its batch. The reference batch is the first batch by default, but could be changed as needed.
+
+```{r}
+# append columns to pheno in order to specify batch information
+my_fb <- fb_setup_batch(
+  my_fb,
+  batch_pattern = ".+?_([AB])$",
+  ref_sample_pattern = "_XX_"
+)
+```
+
+
+### Report Pheno (optional)
+
+```{r}
+kable(my_fb@pheno[,c("sample_id", "TOT", "batch_id", "sample_is_ref", "batch_is_ref")])
+```
+
+
+### Report Panel (optional)
+
+```{r}
+kable(my_fb@panel)
+```
+
+
+
+## EXPERT KNOWLEDGE
+
+Between stages 1 and 2, the expert is called to tune the processing by editing the pheno and panel files.
+
+In the pheno file, the expert:
+* sets a batch id to each FCS file,
+* identifies which FCS file is the reference in each batch,
+* identifies which batch is the reference batch on which all batches will be aligned to.
+
+In the panel file, the expert:
+* tunes the cofactor of the asinh transfom if needed,
+* defines the method to normalize the batch effect,
+* defines the parameters of the method for each batch.
+
+
+In the following code, we update pheno and panel slots of the in-memory object. Pheno information is usually updated by editing the corresponding Excel file. Panel information is interactively updated using the GUI.
+
+```{r}
+# -------- EXPERIMENT DESIGN: identify batch and references
+
+# fulfill pheno with batch information
+id_ref <- which(my_fb@pheno$sample_id %in% c("Mock_01_A", "Mock_05_B"))
+my_fb@pheno[id_ref, "sample_is_ref"] <- "Y"
+my_fb@pheno[id_ref[1], "batch_is_ref"] <- "Y"
+
+# -------- PANEL TUNING: setup transforms and batch methods
+
+# tune the panel
+panel_edited <- read.table(
+  header = TRUE, sep = ";", text = "
+antigen;transf_method;transf_params;batchnorm_method;batchnorm_params
+CD3e;asinh;450;percentile_hi;0.99
+CD16;asinh;650;percentile_lohi;.2,0.80
+Ly6G;asinh;1150;percentile_hi;0.9
+CD45;asinh;650;percentile_hi;0.95
+CD48;asinh;650;percentile_lohi;0.2,0.95
+CD11b;asinh;650;percentile_lohi;0.1,0.8
+B220;asinh;850;percentile_lohi;0.85
+Ly6C;asinh;1150;percentile_lohi;.2,0.8
+")
+for (col in colnames(panel_edited)) {
+  my_fb@panel[, col] <- panel_edited[, col]
+}
+my_fb <- update_transf_from_panel(my_fb)
+```
+
+
+
+## STAGE 2: Isolate anchor files and display graphics to tune the parameters of batch normalisation
+
+
+### Report edited pheno and panel
+
+```{r}
+kable(my_fb@pheno[,c("sample_id","TOT", "batch_id", "sample_is_ref", "batch_is_ref")])
+```
+
+```{r}
+kable(my_fb@panel)
+```
+
+
+### Identify references and normalize them
+
+```{r}
+# -------- BATCH CORRECTIONS USING PANEL
+
+# extract the bunch of reference FCS
+my_fb_ref <- fb_extract_batch_references(
+  my_fb
+)
+
+# load data to assess density plot
+my_fb_ref <- fb_load_cells(
+  my_fb_ref, n_cells = n_cells
+)
+
+# Compute normalization models    
+my_fb_ref_adj <- fb_model_batch(
+  my_fb_ref
+)
+# Apply normalization models to the refs
+my_fb_ref_adj <- fb_correct_batch(
+  my_fb_ref_adj
+)
+```
+
+
+To verify the tuning and the processing of the reference files, plots are created.
+
+```{r}
+# plot raw, ie before
+pdf_file <- fb_file_name(my_fb, "-refs_raw.pdf")
+pdf(pdf_file, width = 15, height = 6)
+fb_plot_ridgelines(my_fb_ref, title = "Raw")
+dev.off()
+message("PDF file is available at ", pdf_file)
+
+# plot normed, ie after
+pdf_file <- fb_file_name(my_fb, "-refs_normd.pdf")
+pdf(pdf_file, width = 15, height = 6)
+fb_plot_ridgelines(my_fb_ref_adj, title = "Normd")
+dev.off()
+message("PDF file is available at ", pdf_file)
+
+# plot an individual channel if needed
+if (FALSE) {
+  fb_plot_ridgelines(
+    my_fb_ref_adj,
+    channels = my_fb@panel$fcs_colname[13],
+    cof = 8,
+    cut_lower_than = -5
+  )
+}
+```
+
+
+## STAGE 3: Process every FCS file.
+
+
+### Normalize all files
+
+If the processing looks fine, then process all files.
+
+```{r}
+# copy transformations
+my_fb@procs <- my_fb_ref_adj@procs
+my_fb <- fb_freeze_file_no(my_fb)
+# apply model transformations
+cat(format(Sys.time(), "%F %X"), "\n")
+for (file_no in my_fb@pheno$file_no) {
+  i <- which(file_no == my_fb@pheno$file_no)
+  cat(sprintf("Processing %s", my_fb@pheno$sample_id[i]), "\n")
+  fb_correct_batch_fcs(my_fb, file_ids = file_no)
+}
+cat(format(Sys.time(), "%F %X"), "\n")
+# store
+fb_write(my_fb)
+# create minimal information to build a flowBunch in fcs
+fb_export(my_fb)
+```
+
+The normalized files are located in a directory called fcs within the project directory.
+
+
+### Report all normalized files (optional)
+
+We report all FCS after normalization. This optional part features the main graphic on which the tuning is based. Here as no batch nor reference files are defined, all the FCS files are shown. This part is typically useful to describe a few tens of FCS files. Adjust the height of the PDF file to match the number of files.
+
+
+```{r}
+my_fb_adj <- fb_open_(
+  project_name = "fcs",
+  project_dir = fb_file_name(my_fb)
+)
+
+# load data to assess density plot
+my_fb_adj <- fb_load_cells(
+  my_fb_adj, n_cells = n_cells
+)
+
+# plot after, ie after, in the same project
+pdf_file <- fb_file_name(my_fb, "-normd.pdf")
+pdf(pdf_file, width = 15, height = 8)
+fb_plot_ridgelines(my_fb_adj, title = "Normd")
+dev.off()
+message("PDF file is available at ", pdf_file)
+```
+
+
+We can now take advantages of knowing the channels selected by the expert and the specified transformations to redo the graphics before normalization for all files.
+
+```{r}
+# initiate a bunch of FCS; a directory is created to store the PDF graphics in
+# the project directory; if no file is written or in a specific location, the
+# project_dir argument could be NULL and nothing is written to disk.
+my_fb_raw <- fb_reload(
+  my_fb
+)
+
+# load data to assess density plot
+my_fb_raw <- fb_load_cells(
+  my_fb_raw, n_cells = n_cells
+)
+# plot raw, ie before normalization
+pdf_file <- fb_file_name(my_fb, "-raw.pdf")
+pdf(pdf_file, width = 15, height = 8)
+fb_plot_ridgelines(my_fb_raw, title = "Raw")
+dev.off()
+message("PDF file is available at ", pdf_file)
+```
