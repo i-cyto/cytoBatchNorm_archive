@@ -20,6 +20,7 @@ fb_read_pheno <- function(
   assertFileExists(file)
   if (grepl("xlsx$", file)) {
     pheno <- readxl::read_excel(file)
+    pheno$batch_id <- as.character(pheno$batch_id)
     pheno <- as.data.frame(pheno)
   } else
     stop("Unrecognized file format for pheno.")
