@@ -239,12 +239,12 @@ ui <- dashboardPage(
                   "Select the batch",
                   choices = "",
                   multiple = TRUE),
-                selectInput(
-                  "revcoef_ncol",
-                  "Select the number of columns",
-                  choices = 1:4, selected = 1),
                 tags$fieldset(
                   tags$legend("Graphical options"),
+                  selectInput(
+                    "revcoef_ncol",
+                    "Select the number of columns",
+                    choices = 1:4, selected = 1),
                   textInput("revcoef_plot_height", "Plot height", "800")
                 )
               ),
@@ -268,12 +268,12 @@ ui <- dashboardPage(
                   "Select the batch",
                   choices = "",
                   multiple = TRUE),
-                selectInput(
-                  "revtran_ncol",
-                  "Select the number of columns",
-                  choices = 2:6, selected = 3),
                 tags$fieldset(
                   tags$legend("Graphical options"),
+                  selectInput(
+                    "revtran_ncol",
+                    "Select the number of columns",
+                    choices = 2:9, selected = 3),
                   selectInput(
                     "revtran_jitter",
                     "Amount of jittering",
@@ -313,6 +313,10 @@ ui <- dashboardPage(
                   multiple = TRUE),
                 tags$fieldset(
                   tags$legend("Graphical options"),
+                  selectInput(
+                    "revbipl_ncol",
+                    "Select the number of columns",
+                    choices = 1:4, selected = 2),
                   selectInput(
                     "revbipl_hexbin",
                     "Number of bins",

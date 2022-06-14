@@ -22,6 +22,9 @@ server <- function(input, output, session) {
     ui_plot_height = 400
   )
 
+  state <- reactiveValues(
+    debugging = FALSE
+  )
 
   # ========== DEBUG
 
@@ -32,22 +35,38 @@ server <- function(input, output, session) {
       class="form-group shiny-input-container",
       actionButton(
         "debug_button",
-        "Debug"
+        "Debug NOW"
       ),
-      checkboxInput(
+      actionButton(
         "debug_flag",
-        "Debugging mode"
+        "Debugging is Off"
+      ),
+      actionButton(
+        "debug_mem_button",
+        "Mem use: click!"
       ))
   })
 
   # activate debugging in some functions
-  debugging <- reactive({
-    if (debug) input$debug_flag else FALSE
+  observeEvent(input$debug_flag, {
+    state$debugging <- !state$debugging
+    dbg_msg <- paste0("Debugging is ", ifelse(state$debugging, "On", "Off"))
+    updateActionButton(session, "debug_flag", dbg_msg)
   })
+  debugging <- function() {
+    if (debug) isolate(state$debugging) else FALSE
+  }
 
   # interrupt the code to view values using isolate()
   observeEvent(input$debug_button, {
     browser()
+  })
+
+  # report memory use
+  observeEvent(input$debug_mem_button, {
+    mem_use <- sprintf("Mem use %.0f MB", pryr::mem_used()/1024^2)
+    updateActionButton(session, "debug_mem_button", mem_use)
+    message(mem_use)
   })
 
 
@@ -71,7 +90,7 @@ server <- function(input, output, session) {
     fcs_dir <- parseDirPath(roots = roots, input$create_fcs_dir)
     cytometer <- input$create_cytometer
     # check FCS files present
-    ok <- length(dir(path = fcs_dir, "\\.[Ff][Cc][Ss]$")) > 0
+    ok <- length(dir(path = fcs_dir, "\\.fcs$", ignore.case = TRUE)) > 0
     if (!ok) {
       showNotification("No FCS in selected dir?", type = "error")
       req(ok)
@@ -79,7 +98,7 @@ server <- function(input, output, session) {
     showNotification("Scan started", type = "message")
     withCallingHandlers({
       shinyjs::html("create_log", "\n")
-      my_fb <- fb_initiate(proj_name, proj_dir, fcs_dir, cytometer)
+      my_fb <- fb_initiate(proj_name, proj_dir, fcs_dir, cytometer = cytometer)
     },
     message = function(m) {
       shinyjs::html(id = "create_log", html = m$message, add = TRUE)
@@ -309,8 +328,8 @@ server <- function(input, output, session) {
       selected = input$revbipl_channel_y)
 
     warning("Update UI batch")
-    batches <- my_fb_ref@pheno$file_no
-    names(batches) <- my_fb_ref@pheno$batch_id
+    batches <- c(0, my_fb_ref@pheno$file_no)
+    names(batches) <- c("all_batches", my_fb_ref@pheno$batch_id)
     updateSelectizeInput(
       session, "revtran_batch",
       choices = batches,
@@ -513,7 +532,7 @@ server <- function(input, output, session) {
 
   revcoef_gdata <- reactive({
     warning("revcoef_main_plot")
-    if (isolate(debugging())) browser()
+    if (debugging()) browser()
     channel <- input$revcoef_channel
     req(channel)
 
@@ -565,14 +584,18 @@ server <- function(input, output, session) {
     gg_perc <- gdata$gg_perc
     channel_name <- gdata$channel_name
     file_no <- as.integer(input$revcoef_batch)
-    if (length(file_no) == 0)
+    if (length(file_no) == 0) {
       file_no <- gdata$gg_perc$file_no
+    } else if (0 %in% file_no) {
+      file_no <- c(setdiff(file_no, 0), setdiff(gdata$gg_perc$file_no, file_no))
+    }
     req(file_no)
     file_nos <- c(file_no)
 
     # plot difference
+    if (debugging()) browser()
     llim <- range(gg_perc$coeff)
-    gg <- ggplot(gg_perc, aes_string("batch_id", "coeff")) +
+    gg <- ggplot(gg_perc, aes(batch_id, coeff)) +
       geom_col(width = 0.2) + #geom_point() +
       ylim(min(-1, llim[1]), max(1, llim[2])) +
       facet_wrap(~percentiles) +
@@ -646,10 +669,13 @@ server <- function(input, output, session) {
     df$batch_id <- mapping[as.character(df$file_no)]
 
     if (debugging()) browser()
+    if (0 %in% file_no) {
+      file_no <- c(setdiff(file_no, 0), setdiff(df$file_no, file_no))
+    }
     file_nos <- c(file_no)
     gg <- ggplot(subset(df, file_no %in% file_nos),
-                 aes_string(x = colnames(df)[idx],
-                            y = colnames(df)[idx+ncol(df_raw)-2])) +
+                 aes_(x = as.name(colnames(df)[idx]),
+                      y = as.name(colnames(df)[idx+ncol(df_raw)-2]))) +
       geom_jitter(width = jitter, height = jitter,
                   pch = point, cex = 2, col = "#11222222") +
       geom_abline(slope = 1, intercept = 0, col = grey(.3)) +
@@ -689,6 +715,8 @@ server <- function(input, output, session) {
     req(hexbin)
     aspect <- as.numeric(input$revbipl_aspect)
     req(aspect)
+    gg_ncol <- as.numeric(input$revbipl_ncol)
+    req(gg_ncol)
 
     my_fb_ref <- my_fb_ref()
     req(my_fb_ref)
@@ -712,13 +740,24 @@ server <- function(input, output, session) {
     names(mapping) <- my_fb_ref@pheno$file_no
     df_all$batch_id <- mapping[as.character(df_all$file_no)]
 
+    if (debugging()) browser()
+    if (0 %in% file_no) {
+      file_no <- c(setdiff(file_no, 0), setdiff(df_all$file_no, file_no))
+    }
     file_nos <- c(file_no)
-    gg <- ggplot(subset(df_all, file_no %in% file_nos),
-                 aes_string(x = channel_x, y = channel_y)) +
+    df_tmp <- subset(df_all, file_no %in% file_nos)
+    df_tmp$facet <- sprintf("%s | %s", df_tmp$batch_id, df_tmp$normed)
+    gg_pal <- rev(RColorBrewer::brewer.pal(11, "Spectral"))
+    asinh_d <- function(x) asinh(x/10)
+    asinh_i <- function(x) 10*sinh(x)
+    gg <- ggplot(df_tmp, aes_(x = as.name(channel_x), y = as.name(channel_y))) +
       geom_hex(bins = hexbin) +
-      scale_fill_gradientn(colours = rev(RColorBrewer::brewer.pal(11, "Spectral")), trans = "sqrt") +
+      scale_fill_gradientn(colours = gg_pal,
+                           trans = scales::trans_new("asinh", asinh_d, asinh_i)) +
+      # scale_fill_gradientn(colours = gg_pal, trans = "sqrt") +
       theme_minimal() + theme(aspect.ratio = aspect) +
-      facet_grid(batch_id ~ normed) +
+      # facet_grid(batch_id ~ normed) +
+      facet_wrap(~facet, ncol = 2*gg_ncol) +
       labs(x = channel_name_x, y = channel_name_y)
     print(gg)
   })
@@ -742,7 +781,8 @@ server <- function(input, output, session) {
 
     # plot raw, ie before
     showNotification("Preview RAW started")
-    pdf(fb_file_name(my_fb_ref, "-refs_raw.pdf"), width = 15, height = 6)
+    pdf(fb_file_name(my_fb_ref, "-refs_raw.pdf"), width = 15,
+        height = 2.5+0.20*nrow(my_fb_ref@pheno))
     fb_plot_ridgelines(my_fb_ref, title = "Raw")
     dev.off()
     showNotification("Preview RAW finished")
@@ -759,8 +799,9 @@ server <- function(input, output, session) {
 
     # plot normed, ie after
     showNotification("Preview NORMD started")
-    pdf(fb_file_name(my_fb_ref, "-refs_normed.pdf"), width = 15, height = 6)
-    fb_plot_ridgelines(my_fb_ref_adj, group_by = "batch_id", title = "Normd")
+    pdf(fb_file_name(my_fb_ref, "-refs_normed.pdf"), width = 15,
+        height = 2.5+0.20*nrow(my_fb_ref_adj@pheno))
+    fb_plot_ridgelines(my_fb_ref_adj, title = "Normd")
     dev.off()
     showNotification("Preview NORMD finished")
   })
@@ -828,7 +869,8 @@ server <- function(input, output, session) {
       my_fb_raw, n_cells = 9000
     )
     # plot raw, ie before normalization
-    pdf(fb_file_name(my_fb_raw, "-raw.pdf"), width = 15, height = 8)
+    pdf(fb_file_name(my_fb_raw, "-raw.pdf"), width = 15,
+        height = 2.5+0.20*nrow(my_fb_raw@pheno))
     fb_plot_ridgelines(my_fb_raw, title = "Raw")
     dev.off()
     showNotification("Review RAW finished")
@@ -851,7 +893,8 @@ server <- function(input, output, session) {
       my_fb_adj, n_cells = 9000
     )
     # plot after, ie after, in the same project
-    pdf(fb_file_name(my_fb, "-normd.pdf"), width = 15, height = 8)
+    pdf(fb_file_name(my_fb, "-normd.pdf"), width = 15,
+        height = 2.5+0.20*nrow(my_fb_adj@pheno))
     fb_plot_ridgelines(my_fb_adj, title = "Normd")
     dev.off()
     showNotification("Review NORMD finished")
