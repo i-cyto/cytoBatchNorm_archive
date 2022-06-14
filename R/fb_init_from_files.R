@@ -37,10 +37,10 @@ fb_init_from_files <- function(
   if (verbose) message("Scanning a bunch of FCS files...")
   fscan <- do.call(
     "fb_scan_files",
-    c(
+    c(list(
       files = files, path = path, pattern = pattern,
       outfile = NULL,
-      which.lines = which.lines, channel_alias = channel_alias,
+      which.lines = which.lines, channel_alias = channel_alias),
       fb@options$read_fcs,
       ...
     )
