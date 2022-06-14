@@ -311,7 +311,7 @@ fb_order_by <- function(
     return(fb)
   }
   # reorder
-  oo <- order(fb@pheno[,pheno_col, drop = FALSE])
+  oo <- do.call(order, as.list(fb@pheno[,pheno_col, drop = FALSE]))
   fb@pheno <- fb@pheno[oo,]
   # if (!is.null(fb@exprs)) {  }
   # done
