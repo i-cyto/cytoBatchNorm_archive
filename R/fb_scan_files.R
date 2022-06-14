@@ -81,7 +81,7 @@ fb_scan_files <- function(
 
   # compliance test
   is_compliant <- all(
-    sapply(res2[, (klen+1):ncol(res2)], function(x) length(unique(x)) == 1))
+    sapply(res2[, (1+klen+1):ncol(res2)], function(x) length(unique(x)) == 1))
 
   # write report
   if (!is.null(outfile)) {
