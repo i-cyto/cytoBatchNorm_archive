@@ -65,7 +65,7 @@ transf_set_parameters <- function(
   channels
 ) {
   assertClass(fb, "flowBunch")
-  assertString(transf_method)
+  assertCharacter(transf_method, len = 1, min.chars = 4)
   assertLogical(overwrite, len = 1)
   transf_already <- "transf_method" %in% colnames(fb@panel) &&
     "transf_params" %in% colnames(fb@panel)
@@ -113,8 +113,9 @@ transf_set_parameters <- function(
         message(channels[i], "could not be clearly identified.")
         next
       }
-      fb@panel$transf_method[id_founds[i]] <- transf_method
-      fb@panel$transf_params[id_founds[i]] <- transf_params
+      id_found <- id_founds[i]
+      fb@panel$transf_method[id_found] <- transf_method
+      fb@panel$transf_params[id_found] <- transf_params
       # build corresponding functions
       if (transf_method == "asinh") {
         cofactor <- as.numeric(transf_params)
@@ -122,7 +123,7 @@ transf_set_parameters <- function(
         revtransforms <- function(x) sinh(x)*cofactor
       }
       # assign functions
-      channel <- fb@panel$fcs_colname[id_founds[i]]
+      channel <- fb@panel$fcs_colname[id_found]
       fb@options$transforms[[channel]] <- transforms
       fb@options$revtransforms[[channel]] <- revtransforms
     }
