@@ -78,25 +78,27 @@ dt_plot_ridgelines <- function(
     if (!all(ok))
       stop("channels are not in the names of channel_names ", channels[!ok])
   }
+  # convert batch_col into a factor and map names
+  dta[,batch_col] = factor(dta[,batch_col])
+  # check batch_idn aka the mapping table of the batch_col column
   if (missing(batch_idn))
     batch_idn <- unique(dta[,batch_col])
-  if (is.null(names(batch_idn)) && testIntegerish(batch_idn))
-    names(batch_idn) <- sprintf("batch%02d", batch_idn)
-  if (testCharacter(batch_idn)) {
-    if (length(batch_idn) != length(unique(dta[,batch_col])))
-      stop("length of batch_idn does not equal length of ", batch_col)
-    tmp <- seq_along(batch_idn)
+  if (is.null(names(batch_idn)) && testIntegerish(batch_idn)) {
+    tmp <- sprintf("%s%03d", batch_col, batch_idn)
     names(tmp) <- batch_idn
     batch_idn <- tmp
   }
+  if (is.null(names(batch_idn)) && testCharacter(batch_idn)) {
+    names(batch_idn) <- seq_along(batch_idn)
+  }
+  if (!all(levels(dta[,batch_col]) %in% names(batch_idn)))
+    stop("levels of batch_col ", batch_col, " cannot not be found in batch_idn")
   # graphical output
   if (!is.null(pdf_file)) {
     pdf(pdf_file)  # TODO: tune options
   }
-  #
-  dta[,batch_col] = factor(dta[,batch_col])
-  levels(dta[,batch_col])[batch_idn] <- names(batch_idn)
-  head(dta)
+  # change the levels name
+  levels(dta[,batch_col]) <- batch_idn[levels(dta[,batch_col])]
   # display
   dta_low <- cut_lower_than
   for (chn in channels) {
