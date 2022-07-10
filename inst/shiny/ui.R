@@ -221,7 +221,8 @@ ui <- dashboardPage(
               ),
               mainPanel(
                 width = 8,
-                uiOutput("tune_ui_plots")
+                uiOutput("tune_ui_plot_adj"),
+                uiOutput("tune_ui_plot_raw")
               )
             )
           ),
@@ -241,6 +242,8 @@ ui <- dashboardPage(
                   multiple = TRUE),
                 tags$fieldset(
                   tags$legend("Graphical options"),
+                  tags$label("Set the display scale"), tags$br(),
+                  checkboxInput("revcoef_linear_scale", "Linear scale (Schuyler et al.)"),
                   selectInput(
                     "revcoef_ncol",
                     "Select the number of columns",
