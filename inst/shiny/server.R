@@ -1,3 +1,5 @@
+library(pryr)
+
 server <- function(input, output, session) {
 
   # Get variables passed through the environment
@@ -14,7 +16,8 @@ server <- function(input, output, session) {
   # Reactive values for flowbunch
   mem <- reactiveValues(
     my_fb = NULL,
-    my_fb_ref = NULL
+    my_fb_ref = NULL,
+    my_fb_ref_adj = NULL
   )
 
   # Reactive values to store user preferences
@@ -25,6 +28,10 @@ server <- function(input, output, session) {
   state <- reactiveValues(
     debugging = FALSE
   )
+
+  # User does have control over cleanup
+  cleanup <- reactiveVal(1)
+
 
   # ========== DEBUG
 
@@ -146,7 +153,7 @@ server <- function(input, output, session) {
       need(ref_sample_pattern, 'Sample pattern!')
     )
     req(batch_pattern, ref_sample_pattern)
-    my_fb <- isolate(mem$my_fb)
+    my_fb <- mem$my_fb
     req(my_fb)
 
     withCallingHandlers({
@@ -198,7 +205,7 @@ server <- function(input, output, session) {
     my_fb <- fb_reload_from_disk(my_fb)
     mem$my_fb <- my_fb
     # Erase any ref and transformation
-    mem$my_fb_ref <- NULL
+    mem$my_fb_ref_adj <- mem$my_fb_ref <- NULL
     showNotification("Pheno and panel files reloaded from disk", type = "message")
     # Check batch information in pheno is correct
     errors <- fb_check_pheno(my_fb)
@@ -258,6 +265,19 @@ server <- function(input, output, session) {
 
   # ========== TUNE
 
+  debug_mem <- function(msg = "") {
+    # return(NULL)
+    # warning(sprintf("Mem used: %.2f", pryr::mem_used()/1024^2))
+    rep1 = sprintf(
+      "  %s  output: %.2f kB,  mem: %.2f kB, mem used: %.2f MB\n", msg,
+      (object.size(output))/1024,
+      (object.size(mem))/1024,
+      (mem_used())/1024^2)
+    rep2 = paste0(sapply(reactiveValuesToList(mem), function(x)
+      sprintf("    %.2f kB", object.size(x)/1024)), collapse = "")
+    paste0(rep1, rep2, "\n")
+    # cat(rep1, rep2, sep = "", file = stderr())
+  }
   # When the sample button is pushed,
   # Then sample cells
   observeEvent(input$tune_sample_button, {
@@ -274,10 +294,12 @@ server <- function(input, output, session) {
     my_fb <- mem$my_fb
     req(my_fb)
 
-    # extract the bunch of reference FCS
-    my_fb_ref <- fb_extract_batch_references(
-      my_fb
-    )
+    # set my_fb_ref at 1st sampling or simply update expressions
+    my_fb_ref <- mem$my_fb_ref
+    if (is.null(my_fb_ref)) {
+      # extract the bunch of reference FCS
+      my_fb_ref <- fb_extract_batch_references(my_fb)
+    }
 
     # load data to assess density plot
     showNotification("Sampling started", type = "message")
@@ -286,13 +308,18 @@ server <- function(input, output, session) {
     )
     showNotification("Sampling finished", type = "message")
 
-    # set or update my_fb_ref
-    if (is.null(mem$my_fb_ref)) {
-      mem$my_fb_ref <- my_fb_ref
-    } else {
-      # Copy expressions
-      mem$my_fb_ref@exprs <- my_fb_ref@exprs
-    }
+    showNotification("Modeling started", type = "message")
+    warning(debug_mem("1"))
+    my_fb_ref <- fb_model_batch(my_fb_ref)
+    warning(debug_mem("2"))
+    showNotification("Normalizing started", type = "message")
+    my_fb_ref_adj <- fb_correct_batch(my_fb_ref)
+    warning(debug_mem("3"))
+    showNotification("Sampling finished", type = "message")
+
+    # update memory
+    mem$my_fb_ref <- my_fb_ref
+    mem$my_fb_ref_adj <- my_fb_ref_adj
 
     # Update the UI channels
     # should be done previously
@@ -302,77 +329,80 @@ server <- function(input, output, session) {
     channels <- my_fb_ref@panel$antigen[ok]
     names(channels) <- channels
     # TODO: use row_no instead of name in case of duplicated marker name
-    updateSelectizeInput(
-      session, "tune_channel",
-      choices = channels)
     channel <- input$tune_channel
-    if (isFALSE(channel == "")) channel <- channels[1]
+    # if (isFALSE(channel)) channel <- channels[1]
+    channel <- channels[1]
     updateSelectizeInput(
       session, "tune_channel",
+      choices = channels,
       selected = channel)
+    # will be updated when tune_channel changes
     updateSelectizeInput(
       session, "revtran_channel",
-      choices = channels,
-      selected = input$revtran_channel)
+      choices = channels)
+      # selected = input$revtran_channel)
     updateSelectizeInput(
       session, "revcoef_channel",
-      choices = channels,
-      selected = input$revcoef_channel)
+      choices = channels)
+      # selected = input$revcoef_channel)
     updateSelectizeInput(
       session, "revbipl_channel_x",
-      choices = channels,
-      selected = input$revbipl_channel_x)
+      choices = channels)
+      # selected = input$revbipl_channel_x)
     updateSelectizeInput(
       session, "revbipl_channel_y",
-      choices = channels,
-      selected = input$revbipl_channel_y)
+      choices = channels)
+      # selected = input$revbipl_channel_y)
 
     warning("Update UI batch")
     batches <- c(0, my_fb_ref@pheno$file_no)
     names(batches) <- c("all_batches", my_fb_ref@pheno$batch_id)
     updateSelectizeInput(
       session, "revtran_batch",
-      choices = batches,
-      selected = input$revtran_batch)
+      choices = batches)
+      # selected = input$revtran_batch)
     updateSelectizeInput(
       session, "revcoef_batch",
-      choices = batches,
-      selected = input$revcoef_batch)
+      choices = batches)
+      # selected = input$revcoef_batch)
     updateSelectizeInput(
       session, "revbipl_batch",
-      choices = batches,
-      selected = input$revbipl_batch)
+      choices = batches)
+      # selected = input$revbipl_batch)
   })
 
-  tune_channel <- reactive({
+  observeEvent(input$tune_channel, {
+    debug_mem("Before updating channel")
+    if (debugging()) browser()
     channel <- input$tune_channel
     req(channel)
     validate(need(nchar(as.character(channel)) > 2,
                   "Select a channel in the menu."))
-    if (debugging()) browser()
-    my_fb_ref <- isolate(mem$my_fb_ref)
+    # my_fb_ref <- mem$my_fb_ref
+    my_fb_ref <- mem$my_fb_ref
     req(my_fb_ref)
     idx <- guess_match_channels(my_fb_ref, channel)
+    req(idx)
     channel <- my_fb_ref@panel$fcs_colname[idx]
 
-    warning("Update UI batch")
+    warning("Update UI batch method")
     bnp <- fb_split_batch_params(
       my_fb_ref@panel$batchnorm_method[idx],
       my_fb_ref@panel$batchnorm_params[idx]
     )
-    freezeReactiveValue(input, "tune_batch_method")
-    freezeReactiveValue(input, "tune_batch_params")
-    freezeReactiveValue(input, "tune_batch_zero")
-    freezeReactiveValue(input, "tune_batch_transf")
+    # freezeReactiveValue(input, "tune_batch_method")
     updateSelectInput(
       session, "tune_batch_method",
       selected = bnp[["method"]])
+    # freezeReactiveValue(input, "tune_batch_params")
     updateTextInput(
       session, "tune_batch_params",
       value = bnp[["params"]])
+    # freezeReactiveValue(input, "tune_batch_zero")
     updateCheckboxInput(
       session, "tune_batch_zero",
       value = bnp[["exclude_zeroes"]])
+    # freezeReactiveValue(input, "tune_batch_transf")
     updateCheckboxInput(
       session, "tune_batch_transf",
       value = bnp[["transform"]])
@@ -380,57 +410,73 @@ server <- function(input, output, session) {
     warning("Update UI transf")
     method <- my_fb_ref@panel$transf_method[idx]
     params <- my_fb_ref@panel$transf_params[idx]
-    freezeReactiveValue(input, "tune_transf_method")
-    freezeReactiveValue(input, "tune_transf_params")
+    # freezeReactiveValue(input, "tune_transf_method")
     updateSelectInput(
       session, "tune_transf_method",
       selected = method
     )
+    # freezeReactiveValue(input, "tune_transf_params")
     updateTextInput(
       session, "tune_transf_params",
       value = params
     )
 
-    warning("Update UI transf")
+    warning("Update UI rev")
     # freezeReactiveValue(input, "revcoef_channel")
-    # freezeReactiveValue(input, "revtran_channel")
-    # freezeReactiveValue(input, "revbipl_channel_x")
     updateSelectizeInput(session, "revcoef_channel", selected = input$tune_channel)
+    # freezeReactiveValue(input, "revtran_channel")
     updateSelectizeInput(session, "revtran_channel", selected = input$tune_channel)
+    # freezeReactiveValue(input, "revbipl_channel_x")
     updateSelectizeInput(session, "revbipl_channel_x", selected = input$tune_channel)
 
-    list(idx = idx, channel = channel)
+    cleanup(runif(1))
+    debug_mem("Done updating channel")
   })
 
   # Set the UI for the plots
-  output$tune_ui_plots <- renderUI({
-    warning("Update UI plots")
+  output$tune_ui_plot_adj <- renderUI({
     height <- input$tune_plot_height
-    req(prefs)
-    tagList(
-      plotOutput(
-        "tune_main_plot", width = "100%", height = height
-      ),
-      plotOutput(
-        "tune_main_plot_raw", width = "100%", height = height
-      )
+    req(height)
+    plotOutput(
+      "tune_main_plot_adj", width = "100%", height = height
+    )
+  })
+  output$tune_ui_plot_raw <- renderUI({
+    height <- input$tune_plot_height
+    req(height)
+    plotOutput(
+      "tune_main_plot_raw", width = "100%", height = height
     )
   })
 
   # If method or parameters of batch modeling change,
   # Then update fb_ref
-  my_fb_ref <- reactive({
-    # retrieve channel, transformation batch
-    tune_channel <- (tune_channel())$channel
+  observeEvent(c(
+    cleanup(),
+    input$tune_transf_method,
+    input$tune_transf_params,
+    input$tune_batch_method,
+    input$tune_batch_params,
+    input$tune_batch_zero,
+    input$tune_batch_transf
+    # input$tune_channel
+  ), {
+    ## debug_mem("Before my_fb_ref")
+    # retrieve channel
+    my_fb <- mem$my_fb
+    req(my_fb)
+    idx <- guess_match_channels(my_fb, input$tune_channel)
+    req(idx)
+    tune_channel <- my_fb@panel$fcs_colname[idx]
     req(tune_channel)
+    # retrieve transformation
     transf_method <- input$tune_transf_method
     transf_params <- input$tune_transf_params
-    req(transf_method)
-    req(transf_params)
+    req(transf_method, transf_params)
     message(transf_method, "-", transf_params)
+    # retrieve batch and check
     batch_method <- input$tune_batch_method
     batch_params <- input$tune_batch_params
-    # check
     bp <- as.numeric(strsplit(batch_params, ",\\s*")[[1]])
     tune_load_ncells <- as.integer(isolate(input$tune_load_ncells))
     req(tune_load_ncells)
@@ -443,11 +489,11 @@ server <- function(input, output, session) {
       batch_params <- paste0(batch_params, ",exclude_zeroes")
     if (input$tune_batch_transf)
       batch_params <- paste0(batch_params, ",transform")
-    req(batch_method)
-    req(batch_params)
+    req(batch_method, batch_params)
     message(batch_method, "-", batch_params)
     # retrieve FB and apply parameters
-    my_fb_ref <- isolate(mem$my_fb_ref)
+    my_fb_ref <- mem$my_fb_ref
+    warning(debug_mem("0a"))
     req(my_fb_ref)
     my_fb_ref <- transf_set_parameters(
       my_fb_ref,
@@ -463,29 +509,40 @@ server <- function(input, output, session) {
       overwrite = TRUE,
       channels = tune_channel
     )
-    # fit model to correct batch effect and store model
-    my_fb_ref_mod <- fb_model_batch(
+    # fit model
+    warning(debug_mem("1a"))
+    my_fb_ref <- fb_model_batch(
       my_fb_ref,
       channels = tune_channel
     )
-    mem$my_fb_ref <- my_fb_ref_mod
-    # return updated FB
-    my_fb_ref_mod
-  })
-
-  output$tune_main_plot <- renderPlot({
-    if (debugging()) browser()
-    warning("Plot")
-    channel <- (tune_channel())$channel
-    req(channel)
-    my_fb_ref <- my_fb_ref()
-    req(my_fb_ref)
-
-    # correct batch effect and plot
+    warning(debug_mem("2a"))
+    # correct batch effect
     my_fb_ref_adj <- fb_correct_batch(
       my_fb_ref,
-      channels = channel
+      channels = tune_channel
     )
+    warning(debug_mem("3a"))
+    # update memory
+    mem$my_fb_ref <- my_fb_ref
+    mem$my_fb_ref_adj <- my_fb_ref_adj
+    debug_mem("Done update transf/norm")
+    rm(my_fb_ref, my_fb_ref_adj, my_fb)
+  })
+
+  output$tune_main_plot_adj <- renderPlot({
+    warning(debug_mem("Before tune_main_plot_adj"))
+    if (debugging()) browser()
+    warning("Plot Adj")
+    my_fb_ref_adj <- mem$my_fb_ref_adj
+    req(my_fb_ref_adj)
+    channel <- isolate(input$tune_channel)
+    req(channel)
+    idx <- guess_match_channels(my_fb_ref_adj, channel)
+    req(idx)
+    channel <- isolate(my_fb_ref_adj@panel$fcs_colname[idx])
+    req(channel)
+
+    # plot corrected batch effect
     fb_plot_ridgelines(
       my_fb_ref_adj,
       channel,
@@ -497,13 +554,19 @@ server <- function(input, output, session) {
   })
 
   output$tune_main_plot_raw <- renderPlot({
+    warning(debug_mem("Before tune_main_plot_raw"))
     if (debugging()) browser()
     warning("Plot Raw")
-    channel <- (tune_channel())$channel
-    req(channel)
-    my_fb_ref <- my_fb_ref() ###
+    my_fb_ref <- mem$my_fb_ref
     req(my_fb_ref)
+    channel <- isolate(input$tune_channel)
+    req(channel)
+    idx <- guess_match_channels(my_fb_ref, channel)
+    req(idx)
+    channel <- isolate(my_fb_ref@panel$fcs_colname[idx])
+    req(channel)
 
+    ## debug_mem("Before tune_main_plot_raw")
     # plot
     fb_plot_ridgelines(
       my_fb_ref,
@@ -517,6 +580,18 @@ server <- function(input, output, session) {
 
 
   # ========== REVIEW SCALING COEFF
+
+  # rev_df_raw <- reactive({
+  #   fb <- mem$my_fb_ref
+  #   req(fb)
+  #   fb_get_exprs(fb, "data.frame", transformed = TRUE)
+  # })
+  #
+  # rev_df_adj <- reactive({
+  #   fb_adj <- mem$my_fb_ref_adj
+  #   req(fb_adj)
+  #   fb_get_exprs(fb_adj, "data.frame", transformed = TRUE)
+  # })
 
   # Set the UI for the plots
   output$revcoef_ui_plots <- renderUI({
@@ -536,16 +611,20 @@ server <- function(input, output, session) {
     channel <- input$revcoef_channel
     req(channel)
 
-    my_fb_ref <- my_fb_ref()
+    my_fb_ref <- isolate(mem$my_fb_ref)
     req(my_fb_ref)
     idx <- guess_match_channels(my_fb_ref, channel)
     channel <- my_fb_ref@panel$fcs_colname[idx]
     channel_name <- my_fb_ref@panel$antigen[idx]
 
-    df_raw <- rev_df_raw()
-    req(df_raw)
-    df_adj <- rev_df_adj()
-    req(df_adj)
+    # df_raw <- rev_df_raw()
+    # req(df_raw)
+    # df_adj <- rev_df_adj()
+    # req(df_adj)
+    my_fb_ref_adj <- isolate(mem$my_fb_ref_adj)
+    req(my_fb_ref_adj)
+    df_raw <- fb_get_exprs(my_fb_ref, "data.frame", transformed = TRUE)
+    df_adj <- fb_get_exprs(my_fb_ref_adj, "data.frame", transformed = TRUE)
 
     # get correction
     batch_params <- my_fb_ref@panel$batchnorm_params[idx]
@@ -619,20 +698,6 @@ server <- function(input, output, session) {
     )
   })
 
-  rev_df_raw <- reactive({
-    fb <- my_fb_ref()
-    req(fb)
-    fb_get_exprs(fb, "data.frame", transformed = TRUE)
-  })
-
-  rev_df_adj <- reactive({
-    fb <- my_fb_ref()
-    req(fb)
-    fb_adj <- fb_model_batch(fb)
-    fb_adj <- fb_correct_batch(fb_adj)
-    fb_get_exprs(fb_adj, "data.frame", transformed = TRUE)
-  })
-
   output$revtran_main_plot <- renderPlot({
     warning("revtran_main_plot")
     channel <- input$revtran_channel
@@ -646,7 +711,7 @@ server <- function(input, output, session) {
     gg_ncol <- as.numeric(input$revtran_ncol)
     req(gg_ncol)
 
-    my_fb_ref <- my_fb_ref()
+    my_fb_ref <- isolate(mem$my_fb_ref)
     req(my_fb_ref)
     idx <- guess_match_channels(my_fb_ref, channel)
     channel <- my_fb_ref@panel$fcs_colname[idx]
@@ -654,10 +719,14 @@ server <- function(input, output, session) {
 
     if (!is.na(as.integer(point))) point <- as.integer(point)
 
-    df_raw <- rev_df_raw()
-    req(df_raw)
-    df_adj <- rev_df_adj()
-    req(df_raw)
+    # df_raw <- rev_df_raw()
+    # req(df_raw)
+    # df_adj <- rev_df_adj()
+    # req(df_adj)
+    my_fb_ref_adj <- isolate(mem$my_fb_ref_adj)
+    req(my_fb_ref_adj)
+    df_raw <- fb_get_exprs(my_fb_ref, "data.frame", transformed = TRUE)
+    df_adj <- fb_get_exprs(my_fb_ref_adj, "data.frame", transformed = TRUE)
 
     df <- cbind(df_raw[ , seq(ncol(df_raw)-2)], df_adj)
     colnames(df)[seq(2*(ncol(df_raw)-2))] <- paste0(
@@ -718,7 +787,7 @@ server <- function(input, output, session) {
     gg_ncol <- as.numeric(input$revbipl_ncol)
     req(gg_ncol)
 
-    my_fb_ref <- my_fb_ref()
+    my_fb_ref <- isolate(mem$my_fb_ref)
     req(my_fb_ref)
     idx <- guess_match_channels(my_fb_ref, channel_x)
     channel_x <- my_fb_ref@panel$fcs_colname[idx]
@@ -727,10 +796,14 @@ server <- function(input, output, session) {
     channel_y <- my_fb_ref@panel$fcs_colname[idx]
     channel_name_y <- my_fb_ref@panel$antigen[idx]
 
-    df_raw <- rev_df_raw()
-    req(df_raw)
-    df_adj <- rev_df_adj()
-    req(df_raw)
+    # df_raw <- rev_df_raw()
+    # req(df_raw)
+    # df_adj <- rev_df_adj()
+    # req(df_adj)
+    my_fb_ref_adj <- isolate(mem$my_fb_ref_adj)
+    req(my_fb_ref_adj)
+    df_raw <- fb_get_exprs(my_fb_ref, "data.frame", transformed = TRUE)
+    df_adj <- fb_get_exprs(my_fb_ref_adj, "data.frame", transformed = TRUE)
 
     df_all <- rbind(cbind(df_raw, normed = "raw"),
                     cbind(df_adj, normed = "normd"))
@@ -825,9 +898,12 @@ server <- function(input, output, session) {
     my_fb_ref <- fb_model_batch(my_fb_ref)
     my_fb@procs <- my_fb_ref@procs
     my_fb@panel <- my_fb_ref@panel
-    my_fb <- fb_freeze_file_no(my_fb)
+    my_fb <- fb_freeze_file_no(my_fb) # modeling
+    showNotification(paste0("Modeling done ", Sys.time()))
     # store before processing
+    showNotification(paste0("Writing flowBunch ", Sys.time()))
     fb_write(my_fb)
+    showNotification(paste0("Writeing done ", Sys.time()))
     # apply models
     showNotification("File processing started")
     withCallingHandlers({
