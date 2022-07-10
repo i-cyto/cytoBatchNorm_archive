@@ -376,10 +376,12 @@ fb_model_batch <- function(
   fno_to_bid <- factor(fb@pheno$batch_id)
   names(fno_to_bid) <- fb@pheno$file_no
   exprs_bid <- fno_to_bid[as.character(fb@exprs[, "file_no"])]
+  rm(fno_to_bid)
 
   # get file_no for reference file
   ref_numid <- which(fb@pheno$batch_is_ref != "")
   ref_bid <- fb@pheno$batch_id[ref_numid]
+  rm(ref_numid)
 
   # channels
   if (missing(channels)) {
@@ -387,8 +389,8 @@ fb_model_batch <- function(
     channels <- fb@panel$fcs_colname[channels]
   }
 
-  options_keep_source <- options("keep.source")
-  options(keep.source=FALSE)
+  # options_keep_source <- options("keep.source")
+  # options(keep.source=FALSE)
 
   models <- list()
   for (chn in channels) {
@@ -400,8 +402,10 @@ fb_model_batch <- function(
 
     # get data from a single channel, so a vector
     all_exprs <- fb_get_exprs(fb, "matrix", transformed = bnp[["transform"]])
+    # TODO: get one channel at a time because of transformation cost
     all_exprs_chn <- all_exprs[, chn]
     all_exprs_fid <- exprs_bid
+    rm(all_exprs)
 
     # exclude zeroes
     if (bnp[["exclude_zeroes"]]) {
@@ -410,13 +414,16 @@ fb_model_batch <- function(
     }
 
     # build the model
+    mod_env <- new.env(parent = baseenv())
+    mod_env$ref_bid <- ref_bid
+
     if (bnp[["method"]] == "none") {
 
       params <- as.character(unique(all_exprs_fid))
-      funs <- sapply(params, function(y) {
+      mod_env$params <- params
+      funs <- local({ sapply(params, function(y) {
         function(x) x
-      })
-      models[[chn]] <- funs
+      })}, envir = mod_env)
 
     } else if (bnp[["method"]] == "percentile_hi") {
 
@@ -424,7 +431,8 @@ fb_model_batch <- function(
       qhi <- max(as.numeric(bnp[["params"]]))
       params <- tapply(all_exprs_chn, all_exprs_fid,
                        quantile, probs = c(qlo, qhi))
-      funs <- sapply(names(params), function(y) {
+      mod_env$params <- params
+      funs <- local({ sapply(names(params), function(y) {
         refHi <- params[[ref_bid]][2]
         batHi <- params[[y]][2]
         if (batHi == 0) {
@@ -434,8 +442,7 @@ fb_model_batch <- function(
         } else {
           function(x) (x/batHi*refHi)
         }
-      })
-      models[[chn]] <- funs
+      })}, envir = mod_env)
 
     } else if (bnp[["method"]] == "quantiles") {
 
@@ -455,14 +462,14 @@ fb_model_batch <- function(
       #                    x <- x[x>0]
       #                    quantile(x, probs = quantileValues)
       #                  })
-      funs <- sapply(names(params), function(y) {
+      mod_env$params <- params
+      funs <- local({ sapply(names(params), function(y) {
         refQ <- params[[ref_bid]]
         batQ <- params[[y]]
         suppressWarnings(
           spl <- stats::splinefun(batQ, refQ, method = "monoH.FC"))
         spl
-      })
-      models[[chn]] <- funs
+      })}, envir = mod_env)
 
     } else if (bnp[["method"]] %in%
                c("percentile_lohi", "percentile_lohi_pos")) {
@@ -473,7 +480,8 @@ fb_model_batch <- function(
       qhi <- min(max(bnp_params), 1)
       params <- tapply(all_exprs_chn, all_exprs_fid,
                        quantile, probs = c(qlo, qhi))
-      funs <- sapply(names(params), function(y) {
+      mod_env$params <- params
+      funs <- local({ sapply(names(params), function(y) {
         refLo <- params[[ref_bid]][1]
         batLo <- params[[y]][1]
         refHi <- params[[ref_bid]][2]
@@ -487,19 +495,24 @@ fb_model_batch <- function(
         } else {
           function(x) pmax((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, 0)
         }
-      })
-      models[[chn]] <- funs
+      })}, envir = mod_env)
 
     } else {
+
       stop("Unknown batchnorm method ", bnp[["method"]], " for channel ", chn)
+
     }
 
+    models[[chn]] <- funs
+
   }
-  options(options_keep_source)
+  # options(options_keep_source)
   if (verbose) message("\nDone")
+  temp <- fb@procs$batchnorm_funs
   for (chn in names(models)) {
-    fb@procs$batchnorm_funs[[chn]] <- models[[chn]]
+    temp[[chn]] <- models[[chn]]
   }
+  fb@procs$batchnorm_funs <- temp
   fb
 }
 
@@ -533,6 +546,7 @@ fb_correct_batch <- function(
   fno_to_bid <- factor(fb@pheno$batch_id)
   names(fno_to_bid) <- fb@pheno$file_no
   exprs_bid <- fno_to_bid[as.character(fb@exprs[, "file_no"])]
+  rm(fno_to_bid)
 
   # channels
   if (missing(channels)) {
@@ -544,7 +558,6 @@ fb_correct_batch <- function(
 
   for (chn in channels) {
     if (verbose) message("  ", chn, appendLF = FALSE)
-#browser()
     # parse batchnorm params
     bnp <- fb_split_batch_params(batchnorm_method[chn], batchnorm_params[chn])
 
