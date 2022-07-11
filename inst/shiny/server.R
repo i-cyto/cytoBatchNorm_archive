@@ -478,6 +478,7 @@ server <- function(input, output, session) {
     batch_method <- input$tune_batch_method
     batch_params <- input$tune_batch_params
     bp <- as.numeric(strsplit(batch_params, ",\\s*")[[1]])
+    req(bp, cancelOutput = FALSE)
     tune_load_ncells <- as.integer(isolate(input$tune_load_ncells))
     req(tune_load_ncells)
     err <- min(c(bp, 1-bp) * tune_load_ncells) < 10
