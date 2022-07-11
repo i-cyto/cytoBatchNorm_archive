@@ -416,6 +416,7 @@ fb_model_batch <- function(
     # build the model
     mod_env <- new.env(parent = baseenv())
     mod_env$ref_bid <- ref_bid
+    mod_env$chn <- chn
 
     if (bnp[["method"]] == "none") {
 
