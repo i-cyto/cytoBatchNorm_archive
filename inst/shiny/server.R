@@ -1,4 +1,12 @@
-library(pryr)
+if (require(pryr)) {
+  mem_used <- pryr::mem_used
+} else {
+  mem_used <- function() {
+    warning("pryr package is not installed.")
+    return(0)
+  }
+}
+
 
 server <- function(input, output, session) {
 
@@ -71,7 +79,7 @@ server <- function(input, output, session) {
 
   # report memory use
   observeEvent(input$debug_mem_button, {
-    mem_use <- sprintf("Mem use %.0f MB", pryr::mem_used()/1024^2)
+    mem_use <- sprintf("Mem use %.0f MB", mem_used()/1024^2)
     updateActionButton(session, "debug_mem_button", mem_use)
     message(mem_use)
   })
@@ -267,7 +275,7 @@ server <- function(input, output, session) {
 
   debug_mem <- function(msg = "") {
     # return(NULL)
-    # warning(sprintf("Mem used: %.2f", pryr::mem_used()/1024^2))
+    # warning(sprintf("Mem used: %.2f", mem_used()/1024^2))
     rep1 = sprintf(
       "  %s  output: %.2f kB,  mem: %.2f kB, mem used: %.2f MB\n", msg,
       (object.size(output))/1024,
