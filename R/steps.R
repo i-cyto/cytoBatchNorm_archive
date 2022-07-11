@@ -417,8 +417,9 @@ fb_model_batch <- function(
     mod_env <- new.env(parent = baseenv())
     mod_env$ref_bid <- ref_bid
     mod_env$chn <- chn
+    mod_env$method <- method <- bnp[["method"]]
 
-    if (bnp[["method"]] == "none") {
+    if (method == "none") {
 
       params <- as.character(unique(all_exprs_fid))
       mod_env$params <- params
@@ -426,7 +427,7 @@ fb_model_batch <- function(
         function(x) x
       })}, envir = mod_env)
 
-    } else if (bnp[["method"]] == "percentile_hi") {
+    } else if (method == "percentile_hi") {
 
       qlo <- 0
       qhi <- max(as.numeric(bnp[["params"]]))
@@ -445,7 +446,7 @@ fb_model_batch <- function(
         }
       })}, envir = mod_env)
 
-    } else if (bnp[["method"]] == "quantiles") {
+    } else if (method == "quantiles") {
 
       bnp_params <- as.numeric(bnp[["params"]])
       if (length(bnp_params) == 0 || is.na(bnp_params)) {  # default quantiles
@@ -472,7 +473,7 @@ fb_model_batch <- function(
         spl
       })}, envir = mod_env)
 
-    } else if (bnp[["method"]] %in%
+    } else if (method %in%
                c("percentile_lohi", "percentile_lohi_pos")) {
 
       bnp_params <- as.numeric(bnp[["params"]])
@@ -491,7 +492,7 @@ fb_model_batch <- function(
           warning("Infinite scaling for batch ", y, ", channel ", chn,
                   ". No scaling.", call. = FALSE)
           function(x) x
-        } else if (bnp[["method"]] == "percentile_lohi") {
+        } else if (method == "percentile_lohi") {
           function(x) (x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo
         } else {
           function(x) pmax((x-batLo)/(batHi-batLo)*(refHi-refLo)+refLo, 0)
@@ -500,7 +501,7 @@ fb_model_batch <- function(
 
     } else {
 
-      stop("Unknown batchnorm method ", bnp[["method"]], " for channel ", chn)
+      stop("Unknown batchnorm method ", method, " for channel ", chn)
 
     }
 
