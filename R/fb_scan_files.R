@@ -80,8 +80,29 @@ fb_scan_files <- function(
   colnames(res2)[klen+idx*2+1] <- sprintf("P%02dS", idx)
 
   # compliance test
-  is_compliant <- all(
-    sapply(res2[, (1+klen+1):ncol(res2)], function(x) length(unique(x)) == 1))
+  msg <- ""
+  idx_PxxS <- klen+idx*2+1
+  idx_PxxN <- klen+idx*2
+  val_PxxS <- sapply(res2[, idx_PxxS], function(x) unique(x))
+  non_compliant_PxxS <- non_compliant_PxxN <- integer(0)
+  if (is.list(val_PxxS)) {
+    non_compliant_PxxS <- which(sapply(val_PxxS, length) > 1)
+    msg <- paste0(
+      "The description of the following channels are identical: ",
+      paste0(names(non_compliant_PxxS), collapse = ","), "\n")
+    # sapply(val_PxxS[non_compliant], function(x) paste0(sprintf("\'%s\'", x), collapse = ","))
+  }
+  val_PxxN <- sapply(res2[, idx_PxxN], function(x) unique(x))
+  if (is.list(val_PxxN)) {
+    non_compliant_PxxN <- which(sapply(val_PxxN, length) > 1)
+    msg <- paste0(
+      msg,
+      paste0("The name of the following channels are identical: ",
+             paste0(names(non_compliant_PxxN), collapse = ","), "\n"))
+    # sapply(val_PxxN[non_compliant], function(x) paste0(sprintf("\'%s\'", x), collapse = ","))
+  }
+  # PxxN must be identical
+  is_compliant <- length(non_compliant_PxxN) == 0
 
   # write report
   if (!is.null(outfile)) {
