@@ -88,12 +88,12 @@ ui <- dashboardPage(
               textInput(
                 "setup_batch_pattern",
                 "Set the pattern to determine batches",
-                ".+?_Batch(\\d+)_.+"
+                ".+?_([Bb]atch\\d+)_.+"
               ),
               textInput(
                 "setup_ref_sample_pattern",
                 "Set the pattern to identify anchors",
-                "_c20\\.fcs$"
+                "_c20$"
               ),
               # TODO: test button
               # TODO: UI for default processing parameters
