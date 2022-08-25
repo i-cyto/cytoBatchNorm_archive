@@ -30,12 +30,12 @@ fb_initiate <- function(
     assertDirectoryExists(project_dir)
   # Empty init
   my_fb <- flowBunch()
-  # Set output params
-  my_fb@output$name <- project_name
-  my_fb@output$path <- project_dir
+  # Set storage params
+  my_fb@storage$basen <- project_name
+  my_fb@storage$dirn <- project_dir
   # Scan FCS files
   my_fb <- fb_init_from_files(
-    my_fb, path = fcs_dir, pattern = pattern, verbose = 1)
+    my_fb, dirname = fcs_dir, pattern = pattern, verbose = 1)
   # info
   fb_print(my_fb)
   # set direct and reverse transformations
@@ -118,9 +118,9 @@ fb_open <- function(
 ) {
   # Empty init
   my_fb <- flowBunch()
-  # Set output params
-  my_fb@output$name <- project_name
-  my_fb@output$path <- project_dir
+  # Set storage params
+  my_fb@storage$basen <- project_name
+  my_fb@storage$dirn <- project_dir
   #
   rdata <- fb_file_name(my_fb, "%s-fcsBunch.RData")
   if (!file.exists(rdata)) {
@@ -152,11 +152,11 @@ fb_open_ <- function(
 ) {
   # Empty init
   my_fb <- flowBunch()
-  # Set output params
-  my_fb@output$name <- project_name
-  my_fb@output$path <- project_dir
+  # Set storage params
+  my_fb@storage$basen <- project_name
+  my_fb@storage$dirn <- project_dir
   #
-  my_fb@input$path <- fb_file_name(my_fb)
+  my_fb@input$dirn <- fb_file_name(my_fb)
   my_fb <- fb_read_panel(my_fb)
   my_fb <- update_transf_from_panel(my_fb)
   my_fb <- fb_read_pheno(my_fb)
@@ -633,7 +633,7 @@ fb_correct_batch_fcs <- function(
 
   models <- fb@procs$batchnorm_funs
 
-  outdir <- file.path(fb@output$path, fb@output$name, "fcs")
+  outdir <- file.path(fb@storage$dirn, fb@storage$basen, "fcs")
   if (!dir.exists(outdir)) dir.create(outdir)
   if (verbose)
     message("output directory is ", outdir)

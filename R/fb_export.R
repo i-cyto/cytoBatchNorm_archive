@@ -23,16 +23,16 @@ fb_export <- function(
   # Empty init
   to_fb <- flowBunch()
   # Set input params
-  # the pseudo project is located in the output fcs directory
+  # the pseudo project is located in the output "fcs" directory
   # the pheno and panel files will be located there
-  to_fb@output$path <- fb_file_name(fb)
-  to_fb@output$name <- to_dir
+  to_fb@storage$dirn <- fb_file_name(fb)
+  to_fb@storage$basen <- to_dir
   # the FCS files are located there
   fcs_dir <- fb_file_name(to_fb)
   if (!testDirectoryExists(fcs_dir))
     warning("to_dir does not exist \'", fcs_dir, "\'")
   # if (!dir.exists(fcs_dir)) dir.create(fcs_dir)
-  to_fb@input$path <- fcs_dir
+  to_fb@input$dirn <- fcs_dir
   to_fb@input$pattern <- "\\.[fF][cC][sS]$"
   # update and write pheno
   pheno <- fb@pheno

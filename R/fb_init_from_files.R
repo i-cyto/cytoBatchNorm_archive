@@ -6,8 +6,8 @@
 #'
 #' @param fb flowBunch
 #' @param files strings, the vector of file names. NULL by default, which leads
-#'   to load all FCS files in the given path.
-#' @param path string, the unique path where the files are located.
+#'   to load all FCS files in the given dirname.
+#' @param dirname string, the unique dirname where the files are located.
 #' @param pattern string.
 #' @param which.lines integer, the events to load for the quick scan.
 #' @param channel_alias strings, see read.flowSet
@@ -21,7 +21,7 @@
 fb_init_from_files <- function(
   fb,
   files = NULL,
-  path = ".",
+  dirname = ".",
   pattern = NULL,
   which.lines = 1:50,
   channel_alias = NULL,
@@ -38,7 +38,7 @@ fb_init_from_files <- function(
   fscan <- do.call(
     "fb_scan_files",
     c(list(
-      files = files, path = path, pattern = pattern,
+      files = files, dirname = dirname, pattern = pattern,
       outfile = NULL,
       which.lines = which.lines, channel_alias = channel_alias),
       fb@options$read_fcs,
@@ -77,7 +77,7 @@ fb_init_from_files <- function(
   fb@pheno <- pheno
   # store input
   fb@input$files <- files
-  fb@input$path <- path
+  fb@input$dirn <- dirname
   fb@input$pattern <- pattern
   # return
   message("Initialization done.")

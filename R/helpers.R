@@ -5,7 +5,7 @@
 #'
 #' @param files Optional character vector with filenames passed to
 #'   \code{\link[flowCore]{read.FCS}} for details.
-#' @param path Directory where to look for the files passed to
+#' @param dirname Directory where to look for the files passed to
 #'   \code{\link[flowCore]{read.FCS}} for details..
 #' @param pattern This argument is passed to \code{\link[flowCore]{read.FCS}}
 #'   for details.
@@ -36,7 +36,7 @@
 #' @export
 
 cbn_create_templates <- function(
-  files = NULL, path = ".", pattern = NULL,
+  files = NULL, dirname = ".", pattern = NULL,
   output_dir  =  ".",
   batch_pattern = NULL,
   ref_sample_pattern = NULL,
@@ -50,7 +50,7 @@ cbn_create_templates <- function(
   assertString(ref_sample_pattern, null.ok = TRUE)
   # read all FCS files through read.flowSet which does consistency checks
   flowSet <- read.flowSet(
-    files = files, path = path, pattern = pattern,
+    files = files, path = dirname, pattern = pattern,
     which.lines = which.lines, emptyValue = emptyValue,
     channel_alias = channel_alias,
     ...

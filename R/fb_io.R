@@ -1,6 +1,6 @@
 #' @title fb_file_name
 #'
-#' @description Build a file name from the given flowBunch. The project path and name of the flowBunch are concatenated to locate the directory of the flowBunch. If a format string is supplied, a file name is appended.
+#' @description Build a file name from the given flowBunch. The project dirname and basename of the flowBunch are concatenated to locate the directory of the flowBunch. If a format string is supplied, a file name is appended.
 #'
 #' @param fb flowBunch
 #' @param s_format string, the format used in a sprintf. It eases to build standardized file names.
@@ -14,18 +14,18 @@ fb_file_name <- function(
 ) {
   assertClass(fb, "flowBunch")
   assertString(s_format, null.ok = TRUE)
-  proj_name <- fb@output$name
-  proj_path <- fb@output$path
+  proj_name <- fb@storage$basen
+  proj_dirname <- fb@storage$dirn
   assertString(proj_name)
-  if (testNull(proj_path))
+  if (testNull(proj_dirname))
     return(NULL)
-  assert(dir.exists(proj_path))
+  assert(dir.exists(proj_dirname))
   if (is.null(s_format)) {
-    file.path(proj_path, proj_name)
+    file.path(proj_dirname, proj_name)
   } else {
     if (!grepl("%s", s_format, fixed = TRUE))
       s_format <- paste0("%s", s_format)
-    file.path(proj_path, proj_name, sprintf(s_format, proj_name))
+    file.path(proj_dirname, proj_name, sprintf(s_format, proj_name))
   }
 }
 

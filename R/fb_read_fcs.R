@@ -65,7 +65,7 @@ fb_read_fcs <- function(
     if (verbose) message(sprintf("reading FCS %3d/%d", i, length(file_nos)))
     file_path <- fb@pheno$file_name[i]
     if (!file.exists(file_path)) {
-      file_path <- file.path(fb@input$path, fb@pheno$file_name[i])
+      file_path <- file.path(fb@input$dirn, fb@pheno$file_name[i])
       if (!file.exists(file_path)) {
         stop("file not found: ", fb@pheno$file_name[i])
       }

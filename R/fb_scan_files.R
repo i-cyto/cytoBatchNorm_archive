@@ -3,8 +3,8 @@
 #' @description Scan files and check flowBunch compliance.
 #'
 #' @param files strings, the vector of file names. NULL by default, which leads
-#'   to load all FCS files in the given path.
-#' @param path string, the unique path where the files are located.
+#'   to load all FCS files in the given dirname.
+#' @param dirname string, the unique dirname where the files are located.
 #' @param pattern string.
 #' @param keywords string.
 #' @param outfile string.
@@ -19,7 +19,7 @@
 
 fb_scan_files <- function(
     files = NULL,
-    path = ".",
+    dirname = ".",
     pattern = "\\.fcs$",
     keywords = c("FILENAME", "$TOT", "$PAR", "$CYT", "$CYTSN",
                  "$DATE", "$BTIM", "$ETIM"),
@@ -31,16 +31,16 @@ fb_scan_files <- function(
     ...
 ) {
   if (is.null(files)) {
-    files <- dir(path, pattern, ignore.case = TRUE, full.names = TRUE)
+    files <- dir(dirname, pattern, ignore.case = TRUE, full.names = TRUE)
     if (length(files) < 1)
-      stop("No file matching '", pattern, "' found in ", path)
+      stop("No file matching '", pattern, "' found in ", dirname)
   } else {
     if (!is.character(files))
       stop("'files' must be a character vector.")
-    if (path != ".")
-      files <- file.path(path, files)
+    if (dirname != ".")
+      files <- file.path(dirname, files)
     if (!all(file.exists(files)))
-      stop("Not all given files could be found in", path)
+      stop("Not all given files could be found in", dirname)
   }
   # TODO: check duplicated basenames
   # fn <- make.unique(basename(files))
@@ -106,9 +106,9 @@ fb_scan_files <- function(
 
   # write report
   if (!is.null(outfile)) {
-    outpath <- dirname(outfile)
-    if (!dir.exists(outpath)) {
-      message("Report directory ", outpath, " does not exist")
+    outdirname <- dirname(outfile)
+    if (!dir.exists(outdirname)) {
+      message("Report directory ", outdirname, " does not exist")
     } else {
       if (dir.exists(outfile))  # outfile is a directory
         outfile <- file.path(outfile, "scan_files.xlsx")

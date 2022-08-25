@@ -57,6 +57,7 @@ setClassUnion("m_df_dt_null", c("matrix", "data.frame", "data.table", "NULL"))
 #' @slot options .
 #' @slot procs .
 #' @slot input .
+#' @slot storage .
 #' @slot output .
 #'
 #' @section Creating Objects: Objects can be created using\cr \code{
@@ -112,6 +113,7 @@ setClass(
     options = "list",
     procs = "list",
     input = "list",
+    storage = "list",
     output = "list"
   ),
   # set the default values for the slots.
@@ -139,12 +141,14 @@ setClass(
     procs = NULL,
     input = list(
       files = NULL,
-      path = NULL,
+      dirn = NULL,
       pattern = NULL
     ),
+    storage = list(
+      basename = NULL,
+      dirn = NULL
+    ),
     output = list(
-      name = NULL,
-      path = NULL
     )
   ),
 
@@ -221,15 +225,21 @@ fb_info <- function(
   if (is.null(fb@input)) info <- c(info, "No input information.") else {
     info <- c(info,
       sprintf("Input files: %s", paste0(fb@input$files, collapse = ",")),
-      sprintf("Input path: %s", fb@input$path),
+      sprintf("Input dirname: %s", fb@input$dirn),
       sprintf("Input pattern: %s", fb@input$pattern)
     )
   }
   if (is.null(fb@output)) info <- c(info,"No output information.\n") else {
     info <- c(info,
-      sprintf("Output name: %s", fb@output$name),
-      sprintf("Output path: %s", fb@output$path),
-      sprintf("Output full path: %s", file.path(fb@output$path, fb@output$name))
+      # TODO: add information about output
+      "To be added...")
+  }
+  if (is.null(fb@storage)) info <- c(info,"No storage information.\n") else {
+    info <- c(info,
+      sprintf("Storage basename: %s", fb@storage$basen),
+      sprintf("Storage dirname: %s", fb@storage$dirn),
+      sprintf("Storage full path: %s",
+              file.path(fb@storage$dirn, fb@storage$basen))
     )
   }
   info
