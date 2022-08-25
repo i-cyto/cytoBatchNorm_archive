@@ -633,11 +633,6 @@ fb_correct_batch_fcs <- function(
 
   models <- fb@procs$batchnorm_funs
 
-  outdir <- file.path(fb@storage$dirn, fb@storage$basen, "fcs")
-  if (!dir.exists(outdir)) dir.create(outdir)
-  if (verbose)
-    message("output directory is ", outdir)
-
   # finally apply batch adjustment
   for (file_no in file_nos) {
     i <- match(file_no, fb@pheno$file_no)
@@ -670,7 +665,7 @@ fb_correct_batch_fcs <- function(
     }
     if (verbose > 1) message()  # append LF
     # write.FCS
-    fb_write_fcs(my_fb_single, file_no, out_dir = outdir)
+    fb_write_fcs(my_fb_single, file_no)
   }
 
   if (verbose) message("\nDone")

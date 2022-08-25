@@ -6,7 +6,6 @@
 #' @param file_ids integers, file descriptors from file_no column in pheno
 #'   table.
 #' @param fcs_colnames .
-#' @param out_dir string, path
 #' @param verbose integer, verbosity level.
 #'
 #' @importFrom flowCore read.FCS write.FCS
@@ -19,7 +18,6 @@ fb_write_fcs <- function(
   fb,
   file_ids,
   fcs_colnames,
-  out_dir,
   verbose = 1
 ) {
   assertClass(fb, "flowBunch")
@@ -28,6 +26,11 @@ fb_write_fcs <- function(
   if (verbose) message("Writing FCS from Bunch")
   # set defaults
   if (missing(fcs_colnames)) fcs_colnames <- fb@panel$fcs_colname
+  # Check outdir
+  outdir <- file.path(fb_file_name(fb), fb@output$fcs$basen)
+  if (!dir.exists(outdir)) dir.create(outdir)
+  if (verbose)
+    message("output directory is ", outdir)
   # check
   # If no file_no column then create one
   fb <- fb_freeze_file_no(fb)
@@ -73,7 +76,12 @@ fb_write_fcs <- function(
     #     fb@options$compensated <- TRUE
     # remove file_no and cell_no
     exprs(ff) <- fb@exprs[,1:(ncol(fb@exprs)-2)]
-    file_name <- file.path(out_dir, basename(fb@pheno$file_name[i]))
+    # create output file name
+    file_name <- basename(fb@pheno$file_name[i])
+    file_name <- gsub("\\.fcs$", "", file_name, ignore.case = TRUE)
+    file_name <- paste0(fb@output$fcs$prefix, file_name, fb@output$fcs$suffix)
+    file_name <- file.path(outdir, file_name)
+    # finally write file
     write.FCS(ff, file_name)
   }
   # colnames(dta)[seq(fcs_colnames)] <- fcs_colnames
