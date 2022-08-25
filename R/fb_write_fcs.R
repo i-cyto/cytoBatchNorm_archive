@@ -79,7 +79,7 @@ fb_write_fcs <- function(
     # create output file name
     file_name <- basename(fb@pheno$file_name[i])
     file_name <- gsub("\\.fcs$", "", file_name, ignore.case = TRUE)
-    file_name <- paste0(fb@output$fcs$prefix, file_name, fb@output$fcs$suffix)
+    file_name <- paste0(fb@output$fcs$prefix, file_name, fb@output$fcs$suffix, ".fcs")
     file_name <- file.path(outdir, file_name)
     # finally write file
     write.FCS(ff, file_name)
