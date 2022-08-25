@@ -145,10 +145,15 @@ setClass(
       pattern = NULL
     ),
     storage = list(
-      basename = NULL,
+      basen = NULL,
       dirn = NULL
     ),
     output = list(
+      fcs = list(
+        basen = "fcs",
+        prefix = "",
+        suffix = ""
+      )
     )
   ),
 
