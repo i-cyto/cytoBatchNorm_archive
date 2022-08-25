@@ -35,7 +35,7 @@ guess_ok <- function(
 #'   ignores Time, Center... channels and removes numerical values at the
 #'   beginning of the strings (e.g. "144Nd_" is removed).
 #'
-#' @param fcs_desc character vector with the description column of a FSC file.
+#' @param fcs_desc character vector with the description column of a FCS file.
 #'
 #' @examples
 #' \dontrun{
@@ -61,7 +61,7 @@ guess_antigen <- function(
 #' @description Guess which channels are linked to a biological marker. It
 #'   mainly ignore channels including Time, Center... in their name.
 #'
-#' @param desc character vector with the description column of a FSC file or the
+#' @param desc character vector with the description column of a FCS file or the
 #'   antigens.
 #'
 #' @return a vector of positions of antigens matching none of the unwanted
