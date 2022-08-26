@@ -1,9 +1,38 @@
-#' @title fb_file_name
+#' @title fb_file_path
 #'
-#' @description Build a file name from the given flowBunch. The project dirname and basename of the flowBunch are concatenated to locate the directory of the flowBunch. If a format string is supplied, a file name is appended.
+#' @description Give the storage path of the given flowBunch. The project dirname
+#'   and basename of the flowBunch are concatenated to locate the storage directory of
+#'   the flowBunch.
 #'
 #' @param fb flowBunch
-#' @param s_format string, the format used in a sprintf. It eases to build standardized file names.
+#' @param ... string, folders to append to the path.
+#'
+#' @importFrom checkmate assertClass assertString testNull
+#' @export
+
+fb_file_path <- function(
+    fb,
+    ...
+) {
+  assertClass(fb, "flowBunch")
+  proj_name <- fb@storage$basen
+  proj_dirname <- fb@storage$dirn
+  assertString(proj_name)
+  if (testNull(proj_dirname))
+    return(NULL)
+  assert(dir.exists(proj_dirname))
+  file.path(proj_dirname, proj_name, ...)
+}
+
+
+#' @title fb_file_name
+#'
+#' @description Build a file name from the given flowBunch within the storage
+#'   folder. The format string is used to build the file name.
+#'
+#' @param fb flowBunch
+#' @param s_format string, the format used in a sprintf. It eases to build
+#'   standardized file names.
 #'
 #' @importFrom checkmate assertClass assertString testNull
 #' @export
@@ -14,19 +43,11 @@ fb_file_name <- function(
 ) {
   assertClass(fb, "flowBunch")
   assertString(s_format, null.ok = TRUE)
+  if (is.null(s_format)) return(NULL)
+  if (!grepl("%s", s_format, fixed = TRUE))
+    s_format <- paste0("%s", s_format)
   proj_name <- fb@storage$basen
-  proj_dirname <- fb@storage$dirn
-  assertString(proj_name)
-  if (testNull(proj_dirname))
-    return(NULL)
-  assert(dir.exists(proj_dirname))
-  if (is.null(s_format)) {
-    file.path(proj_dirname, proj_name)
-  } else {
-    if (!grepl("%s", s_format, fixed = TRUE))
-      s_format <- paste0("%s", s_format)
-    file.path(proj_dirname, proj_name, sprintf(s_format, proj_name))
-  }
+  fb_file_path(fb, sprintf(s_format, proj_name))
 }
 
 
@@ -46,7 +67,7 @@ fb_write <- function(
 ) {
   assertClass(fb, "flowBunch")
   assertLogical(write_exprs)
-  proj_dir <- fb_file_name(fb)
+  proj_dir <- fb_file_path(fb)
   if (testNull(proj_dir))
     return(NULL)
   if (!dir.exists(proj_dir))

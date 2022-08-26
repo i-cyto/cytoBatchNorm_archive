@@ -156,7 +156,7 @@ fb_open_ <- function(
   my_fb@storage$basen <- project_name
   my_fb@storage$dirn <- project_dir
   #
-  my_fb@input$dirn <- fb_file_name(my_fb)
+  my_fb@input$dirn <- fb_file_path(my_fb)
   my_fb <- fb_read_panel(my_fb)
   my_fb <- update_transf_from_panel(my_fb)
   my_fb <- fb_read_pheno(my_fb)
