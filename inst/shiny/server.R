@@ -317,12 +317,9 @@ server <- function(input, output, session) {
     showNotification("Sampling finished", type = "message")
 
     showNotification("Modeling started", type = "message")
-    warning(debug_mem("1"))
     my_fb_ref <- fb_model_batch(my_fb_ref)
-    warning(debug_mem("2"))
     showNotification("Normalizing started", type = "message")
     my_fb_ref_adj <- fb_correct_batch(my_fb_ref)
-    warning(debug_mem("3"))
     showNotification("Sampling finished", type = "message")
 
     # update memory
@@ -380,7 +377,6 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$tune_channel, {
-    debug_mem("Before updating channel")
     if (debugging()) browser()
     channel <- input$tune_channel
     req(channel)
@@ -438,7 +434,6 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "revbipl_channel_x", selected = input$tune_channel)
 
     cleanup(runif(1))
-    debug_mem("Done updating channel")
   })
 
   # Set the UI for the plots
@@ -469,7 +464,6 @@ server <- function(input, output, session) {
     input$tune_batch_transf
     # input$tune_channel
   ), {
-    ## debug_mem("Before my_fb_ref")
     # retrieve channel
     my_fb <- mem$my_fb
     req(my_fb)
@@ -502,7 +496,6 @@ server <- function(input, output, session) {
     message(batch_method, "-", batch_params)
     # retrieve FB and apply parameters
     my_fb_ref <- mem$my_fb_ref
-    warning(debug_mem("0a"))
     req(my_fb_ref)
     my_fb_ref <- transf_set_parameters(
       my_fb_ref,
@@ -519,27 +512,24 @@ server <- function(input, output, session) {
       channels = tune_channel
     )
     # fit model
-    warning(debug_mem("1a"))
     my_fb_ref <- fb_model_batch(
       my_fb_ref,
       channels = tune_channel
     )
-    warning(debug_mem("2a"))
     # correct batch effect
     my_fb_ref_adj <- fb_correct_batch(
       my_fb_ref,
       channels = tune_channel
     )
-    warning(debug_mem("3a"))
     # update memory
+    warning("Updating mem objects")
+    if (debugging()) browser()
     mem$my_fb_ref <- my_fb_ref
     mem$my_fb_ref_adj <- my_fb_ref_adj
-    debug_mem("Done update transf/norm")
     rm(my_fb_ref, my_fb_ref_adj, my_fb)
   })
 
   output$tune_main_plot_adj <- renderPlot({
-    warning(debug_mem("Before tune_main_plot_adj"))
     if (debugging()) browser()
     warning("Plot Adj")
     my_fb_ref_adj <- mem$my_fb_ref_adj
@@ -563,9 +553,7 @@ server <- function(input, output, session) {
   })
 
   output$tune_main_plot_raw <- renderPlot({
-    warning(debug_mem("Before tune_main_plot_raw"))
     if (debugging()) browser()
-    warning("Plot Raw")
     my_fb_ref <- mem$my_fb_ref
     req(my_fb_ref)
     channel <- isolate(input$tune_channel)
@@ -575,7 +563,6 @@ server <- function(input, output, session) {
     channel <- isolate(my_fb_ref@panel$fcs_colname[idx])
     req(channel)
 
-    ## debug_mem("Before tune_main_plot_raw")
     # plot
     fb_plot_ridgelines(
       my_fb_ref,
@@ -632,14 +619,19 @@ server <- function(input, output, session) {
     # req(df_adj)
     my_fb_ref_adj <- isolate(mem$my_fb_ref_adj)
     req(my_fb_ref_adj)
-    df_raw <- fb_get_exprs(my_fb_ref, "data.frame", transformed = TRUE)
-    df_adj <- fb_get_exprs(my_fb_ref_adj, "data.frame", transformed = TRUE)
+    linear_scale <- input$revcoef_linear_scale
+    req(linear_scale)
+
+    df_raw <- fb_get_exprs(
+      my_fb_ref, "data.frame", transformed = linear_scale == "diff")
+    df_adj <- fb_get_exprs(
+      my_fb_ref_adj, "data.frame", transformed = linear_scale == "diff")
 
     # get correction
     batch_params <- my_fb_ref@panel$batchnorm_params[idx]
     # check
     # parse parameters
-    percentiles <- as.numeric(strsplit(batch_params, ",\\s+")[[1]])
+    percentiles <- as.numeric(strsplit(batch_params, ",\\s*")[[1]])
     req(percentiles)
     # get percentiles
     # get raw intensities of percentiles
@@ -659,9 +651,17 @@ server <- function(input, output, session) {
       adj = unlist(perc_adj)
     )
     gg_perc$percentiles <- percentiles
-    gg_perc$coeff <- gg_perc$adj - gg_perc$raw
+    if (linear_scale == "diff") {
+      gg_perc$coeff <- gg_perc$adj - gg_perc$raw
+    } else {
+      gg_perc$coeff <- gg_perc$adj / gg_perc$raw
+    }
     # TODO: do a mapping instead of merge
-    gg_perc <- merge(gg_perc, my_fb_ref@pheno[, c("file_no", "batch_id")], sort = FALSE)
+    mapping <- factor(
+      my_fb_ref@pheno$batch_id, levels = my_fb_ref@pheno$batch_id)
+    names(mapping) <- my_fb_ref@pheno$file_no
+    gg_perc$batch_id <- mapping[as.character(gg_perc$file_no)]
+    #gg_perc <- merge(gg_perc, my_fb_ref@pheno[, c("file_no", "batch_id")], sort = FALSE)
     list(gg_perc = gg_perc, channel_name = channel_name)
   })
 
@@ -673,23 +673,43 @@ server <- function(input, output, session) {
     channel_name <- gdata$channel_name
     file_no <- as.integer(input$revcoef_batch)
     if (length(file_no) == 0) {
-      file_no <- gdata$gg_perc$file_no
+      file_no <- gg_perc$file_no
     } else if (0 %in% file_no) {
-      file_no <- c(setdiff(file_no, 0), setdiff(gdata$gg_perc$file_no, file_no))
+      file_no <- c(setdiff(file_no, 0), setdiff(gg_perc$file_no, file_no))
     }
     req(file_no)
     file_nos <- c(file_no)
 
+    linear_scale <- input$revcoef_linear_scale
+    req(linear_scale)
+    gg_ncol <- as.numeric(input$revcoef_ncol)
+    req(gg_ncol)
+
+    # plot reverse order of percentiles
+    gg_perc$percentiles <- factor(
+      gg_perc$percentiles, levels = sort(unique(gg_perc$percentiles), decreasing = TRUE))
+
     # plot difference
     if (debugging()) browser()
-    llim <- range(gg_perc$coeff)
-    gg <- ggplot(gg_perc, aes(batch_id, coeff)) +
-      geom_col(width = 0.2) + #geom_point() +
-      ylim(min(-1, llim[1]), max(1, llim[2])) +
-      facet_wrap(~percentiles) +
-      labs(x = "batch", y = paste0("adjustment of ",  channel_name)) +
-      theme_minimal()
-    print(gg)
+    if (linear_scale == "ratio") {
+      llim <- range(gg_perc$coeff)
+      gg <- ggplot(gg_perc, aes(batch_id, coeff)) +
+        geom_col(width = 0.2) + #geom_point() +
+        ylim(min(0, llim[1]), max(1, llim[2])) +
+        facet_wrap(~percentiles, ncol = gg_ncol) +
+        labs(x = "batch", y = paste0("adjustment of ",  channel_name)) +
+        theme_minimal() + geom_hline(yintercept = 1, lty = 2)
+      print(gg)
+    } else {
+      llim <- range(gg_perc$coeff)
+      gg <- ggplot(gg_perc, aes(batch_id, coeff)) +
+        geom_col(width = 0.2) + #geom_point() +
+        ylim(min(-1, llim[1]), max(1, llim[2])) +
+        facet_wrap(~percentiles, ncol = gg_ncol) +
+        labs(x = "batch", y = paste0("adjustment of ",  channel_name)) +
+        theme_minimal() + geom_hline(yintercept = 0, lty = 2)
+      print(gg)
+    }
   })
 
 
@@ -829,6 +849,11 @@ server <- function(input, output, session) {
     file_nos <- c(file_no)
     df_tmp <- subset(df_all, file_no %in% file_nos)
     df_tmp$facet <- sprintf("%s | %s", df_tmp$batch_id, df_tmp$normed)
+    # ordered factor
+    dd <- unique(df_tmp[, c("batch_id", "normed", "facet")])
+    oo <- order(dd$batch_id, dd$normed)
+    df_tmp$facet = factor(df_tmp$facet, levels = dd$facet[oo])
+
     gg_pal <- rev(RColorBrewer::brewer.pal(11, "Spectral"))
     asinh_d <- function(x) asinh(x/10)
     asinh_i <- function(x) 10*sinh(x)
@@ -912,7 +937,10 @@ server <- function(input, output, session) {
     # store before processing
     showNotification(paste0("Writing flowBunch ", Sys.time()))
     fb_write(my_fb)
-    showNotification(paste0("Writeing done ", Sys.time()))
+    showNotification(paste0("Writing done ", Sys.time()))
+    # update prefix and suffix for writing out FCS files
+    my_fb@output$fcs$prefix <- input$proc_file_prefix
+    my_fb@output$fcs$suffix <- input$proc_file_suffix
     # apply models
     showNotification("File processing started")
     withCallingHandlers({
@@ -961,7 +989,7 @@ server <- function(input, output, session) {
     showNotification("Review RAW finished")
 
     # check process succeeded
-    fcs_dir <- file.path(fb_file_name(my_fb), "fcs")
+    fcs_dir <- fb_file_path(my_fb, my_fb@output$fcs$basen)
     if (!testDirectoryExists(fcs_dir)) {
       showNotification("Normalized files not found")
       return()
@@ -970,8 +998,8 @@ server <- function(input, output, session) {
     # plot normed, ie after
     showNotification("Review NORMD started")
     my_fb_adj <- fb_open_(
-      project_name = "fcs",
-      project_dir = fb_file_name(my_fb)
+      project_name = my_fb@output$fcs$basen,
+      project_dir = fb_file_path(my_fb)
     )
     # load data to assess density plot
     my_fb_adj <- fb_load_cells(

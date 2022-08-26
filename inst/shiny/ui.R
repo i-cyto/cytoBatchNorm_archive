@@ -242,8 +242,13 @@ ui <- dashboardPage(
                   multiple = TRUE),
                 tags$fieldset(
                   tags$legend("Graphical options"),
-                  tags$label("Set the display scale"), tags$br(),
-                  checkboxInput("revcoef_linear_scale", "Linear scale (Schuyler et al.)"),
+                  selectInput(
+                    "revcoef_linear_scale",
+                    "Display coefficients as",
+                    choices = c(
+                      "difference of transformed values"="diff",
+                      "ratio of untransformed values"="ratio"
+                    ), selected = "diff"),
                   selectInput(
                     "revcoef_ncol",
                     "Select the number of columns",
@@ -276,7 +281,7 @@ ui <- dashboardPage(
                   selectInput(
                     "revtran_ncol",
                     "Select the number of columns",
-                    choices = 2:9, selected = 3),
+                    choices = 2:9, selected = 4),
                   selectInput(
                     "revtran_jitter",
                     "Amount of jittering",
@@ -319,7 +324,7 @@ ui <- dashboardPage(
                   selectInput(
                     "revbipl_ncol",
                     "Select the number of columns",
-                    choices = 1:4, selected = 2),
+                    choices = 1:5, selected = 3),
                   selectInput(
                     "revbipl_hexbin",
                     "Number of bins",
@@ -329,7 +334,7 @@ ui <- dashboardPage(
                     "revbipl_aspect",
                     "Aspect ratio of plots",
                     choices = c("1" = "1", "1/2" = "0.5", "1/3" = "0.33", "1/4" = "0.25"),
-                    selected = "0.5"),
+                    selected = "1"),
                   textInput("revbipl_plot_height", "Plot height", "900"),
                   # TODO: print PDF button
                   # actionButton("revbipl_print_pdf", "Print PDF")
@@ -358,7 +363,7 @@ ui <- dashboardPage(
             ),
             tags$div(
               class="form-group shiny-input-container",
-              tags$label("To preview all channels across all batches for reference files, click below"), tags$br(),
+              tags$label("To preview all channels across all batches for reference files, click the 'Preview' button"), tags$br(),
               actionButton(
                 "proc_preview_button",
                 "Preview"
@@ -369,22 +374,30 @@ ui <- dashboardPage(
             ),
             tags$div(
               class="form-group shiny-input-container",
-              tags$label("Once you reviewed all channels, click below"), tags$br(),
+              tags$label("Once you reviewed all channels, enter optional prefix/suffix, then click the 'Apply' button"), tags$br(),
+              textInput(
+                "proc_file_prefix",
+                "File name prefix"
+              ),
+              textInput(
+                "proc_file_suffix",
+                "File name suffix"
+              ),
               actionButton(
                 "proc_apply_button",
                 "Apply"
               )
-            ),
-            tags$fieldset(
-              tags$legend("QC: review the normalization"),
-            ),
-            tags$div(
-              class="form-group shiny-input-container",
-              tags$label("To review all channels across all batches for all files, click below"), tags$br(),
-              actionButton(
-                "proc_review_button",
-                "Review"
-              )
+            # ),
+            # tags$fieldset(
+            #   tags$legend("QC: review the normalization"),
+            # ),
+            # tags$div(
+            #   class="form-group shiny-input-container",
+            #   tags$label("To review all channels across all batches for all files, click below"), tags$br(),
+            #   actionButton(
+            #     "proc_review_button",
+            #     "Review"
+            #   )
             )
           ),
 
