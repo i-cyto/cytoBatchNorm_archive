@@ -607,7 +607,7 @@ fb_correct_batch_fcs <- function(
   channels,
   verbose = 1
 ) {
-  if (verbose) message("Correcting batch effects...")
+  if (verbose) message("Correcting batch effects (fcs)...")
 
   # batchnorm params
   batchnorm_method <- fb@panel$batchnorm_method
